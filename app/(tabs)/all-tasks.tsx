@@ -1,9 +1,11 @@
-import { Clock, Coffee, Moon, Zap } from 'lucide-react-native';
-import React, { useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Calendar, Clock, Coffee, Moon, Zap } from 'lucide-react-native';
+import React, { useEffect, useState } from 'react';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { getSharedTasks } from './taskStorage';
 
 type EnergyLevel = 'high' | 'medium' | 'low';
 type Priority = 'high' | 'medium' | 'low';
+type SortBy = 'date' | 'priority';
 
 interface Task {
   id: number;
@@ -13,15 +15,51 @@ interface Task {
   time: number;
   type: string;
   completed: boolean;
+  dueDate?: string;
 }
 
 export default function AllTasksScreen() {
-  const [tasks] = useState<Task[]>([
-    { id: 1, name: 'Write client proposal', priority: 'high', energy: 'high', time: 60, type: 'Deep focus', completed: false },
-    { id: 2, name: 'Reply to emails', priority: 'medium', energy: 'low', time: 20, type: 'Admin', completed: false },
-    { id: 3, name: 'Review design mockups', priority: 'high', energy: 'medium', time: 30, type: 'Creative', completed: false },
-    { id: 4, name: 'Organize files', priority: 'low', energy: 'low', time: 15, type: 'Admin', completed: false },
-  ]);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [sortBy, setSortBy] = useState<SortBy>('date');
+
+  useEffect(() => {
+  const interval = setInterval(() => {
+    const latestTasks = getSharedTasks();
+    setTasks(latestTasks);
+  }, 500); // Check every 500ms
+  return () => clearInterval(interval);
+}, []);
+
+  const formatDate = (dateString?: string) => {
+    if (!dateString) return 'No date';
+    const date = new Date(dateString);
+    const today = new Date();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    if (date.toDateString() === today.toDateString()) return 'Today';
+    if (date.toDateString() === tomorrow.toDateString()) return 'Tomorrow';
+    
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return `${months[date.getMonth()]} ${date.getDate()}`;
+  };
+
+  const sortTasks = (tasks: Task[]) => {
+    const sorted = [...tasks];
+    
+    if (sortBy === 'date') {
+      sorted.sort((a, b) => {
+        if (!a.dueDate) return 1;
+        if (!b.dueDate) return -1;
+        return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
+      });
+    } else {
+      const priorityOrder = { high: 0, medium: 1, low: 2 };
+      sorted.sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]);
+    }
+    
+    return sorted;
+  };
 
   const getEnergyIcon = (level: EnergyLevel) => {
     switch(level) {
@@ -32,31 +70,50 @@ export default function AllTasksScreen() {
   };
 
   const getEnergyColor = (level: EnergyLevel) => {
-    switch(level) {
-      case 'high': return '#ef4444';
-      case 'medium': return '#f59e0b';
-      case 'low': return '#3b82f6';
-    }
-  };
+  switch(level) {
+    case 'high': return '#F59E0B';
+    case 'medium': return '#8b5cf6';
+    case 'low': return '#38BDF8';
+  }
+};
 
-  const getPriorityColor = (priority: Priority) => {
-    switch(priority) {
-      case 'high': return { border: '#ef4444', bg: '#fee2e2' };
-      case 'medium': return { border: '#f59e0b', bg: '#fef3c7' };
-      case 'low': return { border: '#22c55e', bg: '#dcfce7' };
-    }
-  };
+  const getEnergyCardColor = (level: EnergyLevel) => {
+  switch(level) {
+    case 'high': return { border: '#F59E0B', bg: '#FEF3C7' };
+    case 'medium': return { border: '#8b5cf6', bg: '#F3E8FF' };
+    case 'low': return { border: '#38BDF8', bg: '#E0F2FE' };
+  }
+};
+
+  const sortedTasks = sortTasks(tasks.filter(t => !t.completed));
+  const completedTasks = tasks.filter(t => t.completed);
 
   return (
     <View style={styles.container}>
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
           <Text style={styles.title}>All Tasks</Text>
-          <Text style={styles.subtitle}>{tasks.length} total tasks</Text>
+          <Text style={styles.subtitle}>{sortedTasks.length} active • {completedTasks.length} completed</Text>
         </View>
 
-        {tasks.map(task => {
-          const colors = getPriorityColor(task.priority);
+        <View style={styles.sortContainer}>
+          <Text style={styles.sortLabel}>Sort by:</Text>
+          <TouchableOpacity
+            style={[styles.sortButton, sortBy === 'date' && styles.sortButtonActive]}
+            onPress={() => setSortBy('date')}
+          >
+            <Text style={[styles.sortButtonText, sortBy === 'date' && styles.sortButtonTextActive]}>Date</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.sortButton, sortBy === 'priority' && styles.sortButtonActive]}
+            onPress={() => setSortBy('priority')}
+          >
+            <Text style={[styles.sortButtonText, sortBy === 'priority' && styles.sortButtonTextActive]}>Priority</Text>
+          </TouchableOpacity>
+        </View>
+
+        {sortedTasks.map(task => {
+          const colors = getEnergyCardColor(task.energy);
           const EnergyIcon = getEnergyIcon(task.energy);
           
           return (
@@ -67,25 +124,36 @@ export default function AllTasksScreen() {
               <Text style={styles.taskName}>{task.name}</Text>
               <View style={styles.taskMeta}>
                 <View style={styles.metaItem}>
+                  <Calendar size={16} color="#666" />
+                  <Text style={styles.metaText}>{formatDate(task.dueDate)}</Text>
+                </View>
+                <View style={styles.metaItem}>
                   <Clock size={16} color="#666" />
                   <Text style={styles.metaText}>{task.time}m</Text>
                 </View>
                 <View style={styles.metaItem}>
                   <EnergyIcon size={16} color={getEnergyColor(task.energy)} />
-                  <Text style={styles.metaText}>{task.energy} energy</Text>
+                  <Text style={styles.metaText}>{task.energy}</Text>
                 </View>
-                <View style={styles.metaItem}>
-                  <Text style={styles.metaText}>Priority: {task.priority}</Text>
+                <View style={styles.priorityBadge}>
+                  <Text style={[styles.priorityText, { color: colors.border }]}>{task.priority} priority</Text>
                 </View>
-                {task.type && (
-                  <View style={styles.typeBadge}>
-                    <Text style={styles.typeText}>{task.type}</Text>
-                  </View>
-                )}
               </View>
+              {task.type && (
+                <View style={styles.typeBadge}>
+                  <Text style={styles.typeText}>{task.type}</Text>
+                </View>
+              )}
             </View>
           );
         })}
+
+        {sortedTasks.length === 0 && (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyText}>No tasks yet!</Text>
+            <Text style={styles.emptySubtext}>Add a task to get started</Text>
+          </View>
+        )}
       </ScrollView>
     </View>
   );
@@ -103,7 +171,7 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   header: {
-    marginBottom: 24,
+    marginBottom: 20,
   },
   title: {
     fontSize: 28,
@@ -114,6 +182,34 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 14,
     color: '#666',
+  },
+  sortContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 20,
+  },
+  sortLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#666',
+  },
+  sortButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: '#f3f4f6',
+  },
+  sortButtonActive: {
+    backgroundColor: '#8b5cf6',
+  },
+  sortButtonText: {
+    fontSize: 14,
+    color: '#666',
+    fontWeight: '500',
+  },
+  sortButtonTextActive: {
+    color: '#fff',
   },
   taskCard: {
     borderLeftWidth: 4,
@@ -132,6 +228,7 @@ const styles = StyleSheet.create({
     gap: 16,
     alignItems: 'center',
     flexWrap: 'wrap',
+    marginBottom: 8,
   },
   metaItem: {
     flexDirection: 'row',
@@ -142,14 +239,39 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#666',
   },
-  typeBadge: {
-    backgroundColor: '#fff',
+  priorityBadge: {
     paddingHorizontal: 8,
     paddingVertical: 2,
+    borderRadius: 4,
+    backgroundColor: '#fff',
+  },
+  priorityText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  typeBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#fff',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
     borderRadius: 4,
   },
   typeText: {
     fontSize: 11,
     color: '#666',
+  },
+  emptyState: {
+    alignItems: 'center',
+    marginTop: 60,
+  },
+  emptyText: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#666',
+    marginBottom: 8,
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: '#999',
   },
 });

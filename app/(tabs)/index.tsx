@@ -1,6 +1,7 @@
 import { Check, Clock, Coffee, Moon, Zap } from 'lucide-react-native';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Animated, PanResponder, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { getSharedTasks, updateSharedTasks } from './taskStorage';
 
 type EnergyLevel = 'high' | 'medium' | 'low';
 type Priority = 'high' | 'medium' | 'low';
@@ -13,17 +14,56 @@ interface Task {
   time: number;
   type: string;
   completed: boolean;
+  dueDate?: string;
 }
 
 export default function HomeScreen() {
   const [currentEnergy, setCurrentEnergy] = useState<EnergyLevel>('medium');
-  const [tasks, setTasks] = useState<Task[]>([
-    { id: 1, name: 'Write client proposal', priority: 'high', energy: 'high', time: 60, type: 'Deep focus', completed: false },
-    { id: 2, name: 'Reply to emails', priority: 'medium', energy: 'low', time: 20, type: 'Admin', completed: false },
-    { id: 3, name: 'Review design mockups', priority: 'high', energy: 'medium', time: 30, type: 'Creative', completed: false },
-    { id: 4, name: 'Organize files', priority: 'low', energy: 'low', time: 15, type: 'Admin', completed: false },
-    { id: 5, name: 'Schedule team meeting', priority: 'medium', energy: 'low', time: 10, type: 'Admin', completed: false },
-  ]);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [currentTime, setCurrentTime] = useState(new Date());
+
+  useEffect(() => {
+    setTasks(getSharedTasks());
+    
+    const timer = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 60000);
+
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+  const interval = setInterval(() => {
+    const latestTasks = getSharedTasks();
+    setTasks(latestTasks);
+  }, 500); // Check every 500ms
+  return () => clearInterval(interval);
+}, []);
+
+  const formatTime = (date: Date) => {
+    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    
+    const dayName = days[date.getDay()];
+    const monthName = months[date.getMonth()];
+    const day = date.getDate();
+    
+    let hours = date.getHours();
+    const minutes = date.getMinutes();
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12;
+    hours = hours ? hours : 12;
+    const minutesStr = minutes < 10 ? '0' + minutes : minutes;
+    
+    return `${dayName}, ${monthName} ${day} • ${hours}:${minutesStr} ${ampm}`;
+  };
+
+  const isToday = (dateString?: string) => {
+    if (!dateString) return true;
+    const taskDate = new Date(dateString);
+    const today = new Date();
+    return taskDate.toDateString() === today.toDateString();
+  };
 
   const energyMatch = (taskEnergy: EnergyLevel) => {
     if (currentEnergy === 'high') return true;
@@ -33,12 +73,15 @@ export default function HomeScreen() {
   };
 
   const toggleTask = (id: number) => {
-    setTasks(tasks.map(t => t.id === id ? { ...t, completed: !t.completed } : t));
+    const updatedTasks = tasks.map(t => t.id === id ? { ...t, completed: !t.completed } : t);
+    setTasks(updatedTasks);
+    updateSharedTasks(updatedTasks);
   };
 
-  const suggestedTasks = tasks.filter(t => !t.completed && energyMatch(t.energy));
-  const otherTasks = tasks.filter(t => !t.completed && !energyMatch(t.energy));
-  const completedTasks = tasks.filter(t => t.completed);
+  const todayTasks = tasks.filter(t => isToday(t.dueDate));
+  const suggestedTasks = todayTasks.filter(t => !t.completed && energyMatch(t.energy));
+  const otherTasks = todayTasks.filter(t => !t.completed && !energyMatch(t.energy));
+  const completedTasks = todayTasks.filter(t => t.completed);
 
   const getEnergyIcon = (level: EnergyLevel) => {
     switch(level) {
@@ -49,20 +92,20 @@ export default function HomeScreen() {
   };
 
   const getEnergyColor = (level: EnergyLevel) => {
-    switch(level) {
-      case 'high': return '#ef4444';
-      case 'medium': return '#f59e0b';
-      case 'low': return '#3b82f6';
-    }
-  };
+  switch(level) {
+    case 'high': return '#F59E0B';      // Warm amber - "You've got this!"
+    case 'medium': return '#8b5cf6';    // Purple - "Steady focus"
+    case 'low': return '#38BDF8';       // Sky blue - "It's okay to go slow"
+  }
+};
 
-  const getPriorityColor = (priority: Priority) => {
-    switch(priority) {
-      case 'high': return { border: '#ef4444', bg: '#fee2e2' };
-      case 'medium': return { border: '#f59e0b', bg: '#fef3c7' };
-      case 'low': return { border: '#22c55e', bg: '#dcfce7' };
-    }
-  };
+  const getEnergyCardColor = (level: EnergyLevel) => {
+  switch(level) {
+    case 'high': return { border: '#F59E0B', bg: '#FEF3C7' };      // Amber border, warm yellow bg
+    case 'medium': return { border: '#8b5cf6', bg: '#F3E8FF' };    // Purple border, light purple bg
+    case 'low': return { border: '#38BDF8', bg: '#E0F2FE' };       // Blue border, light blue bg
+  }
+};
 
   const getEnergyMessage = () => {
     switch(currentEnergy) {
@@ -102,7 +145,7 @@ export default function HomeScreen() {
 
   const SwipeableTaskCard = ({ task, suggested }: { task: Task; suggested: boolean }) => {
     const [pan] = useState(new Animated.ValueXY());
-    const colors = getPriorityColor(task.priority);
+    const colors = getEnergyCardColor(task.energy);
     const EnergyIcon = getEnergyIcon(task.energy);
 
     const panResponder = PanResponder.create({
@@ -136,10 +179,12 @@ export default function HomeScreen() {
 
     return (
       <View style={styles.swipeContainer}>
-        <View style={styles.swipeBackground}>
-          <Check size={24} color="#22c55e" />
-          <Text style={styles.swipeText}>Complete</Text>
-        </View>
+        {suggested && (
+          <View style={styles.swipeBackground}>
+            <Check size={24} color="#22c55e" />
+            <Text style={styles.swipeText}>Complete</Text>
+          </View>
+        )}
         <Animated.View
           {...panResponder.panHandlers}
           style={[
@@ -172,7 +217,7 @@ export default function HomeScreen() {
                   </View>
                 )}
               </View>
-              <Text style={styles.swipeHint}>← Swipe to complete →</Text>
+              {suggested && <Text style={styles.swipeHint}>← Swipe to complete →</Text>}
             </View>
           </View>
         </Animated.View>
@@ -181,13 +226,13 @@ export default function HomeScreen() {
   };
 
   const CompletedTaskCard = ({ task }: { task: Task }) => {
-    const colors = getPriorityColor(task.priority);
+    const colors = getEnergyCardColor(task.energy);
     const EnergyIcon = getEnergyIcon(task.energy);
 
     return (
       <TouchableOpacity 
         onPress={() => toggleTask(task.id)}
-        style={[styles.taskCard, { borderLeftColor: colors.border, backgroundColor: colors.bg }, styles.taskCardFaded]}
+        style={[styles.taskCard, { borderLeftColor: colors.border, backgroundColor: colors.bg }, styles.taskCardCompleted]}
       >
         <View style={styles.taskContent}>
           <View style={styles.taskMain}>
@@ -223,7 +268,7 @@ export default function HomeScreen() {
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
           <Text style={styles.title}>Today&apos;s Focus</Text>
-          <Text style={styles.subtitle}>Monday, Jan 5 • 2:30 PM</Text>
+          <Text style={styles.subtitle}>{formatTime(currentTime)}</Text>
         </View>
 
         <EnergySelector />
@@ -236,17 +281,19 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <View style={styles.taskCount}>
-              <Text style={styles.taskCountText}>{suggestedTasks.length} tasks</Text>
+        {suggestedTasks.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <View style={styles.taskCount}>
+                <Text style={styles.taskCountText}>{suggestedTasks.length} tasks</Text>
+              </View>
+              <Text style={styles.sectionTitle}>Matched to Your Energy</Text>
             </View>
-            <Text style={styles.sectionTitle}>Matched to Your Energy</Text>
+            {suggestedTasks.map(task => (
+              <SwipeableTaskCard key={task.id} task={task} suggested={true} />
+            ))}
           </View>
-          {suggestedTasks.map(task => (
-            <SwipeableTaskCard key={task.id} task={task} suggested={true} />
-          ))}
-        </View>
+        )}
 
         {otherTasks.length > 0 && (
           <View style={styles.section}>
@@ -263,6 +310,13 @@ export default function HomeScreen() {
             {completedTasks.map(task => (
               <CompletedTaskCard key={task.id} task={task} />
             ))}
+          </View>
+        )}
+
+        {suggestedTasks.length === 0 && otherTasks.length === 0 && completedTasks.length === 0 && (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyText}>No tasks for today! 🎉</Text>
+            <Text style={styles.emptySubtext}>Add a task to get started</Text>
           </View>
         )}
 
@@ -418,7 +472,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
   },
   taskCardFaded: {
-    opacity: 0.6,
+    opacity: 0.5,
+  },
+  taskCardCompleted: {
+    opacity: 0.7,
   },
   taskContent: {
     flexDirection: 'row',
@@ -438,6 +495,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#111',
+    flexShrink: 1,
   },
   taskNameCompleted: {
     textDecorationLine: 'line-through',
@@ -459,6 +517,7 @@ const styles = StyleSheet.create({
     gap: 16,
     alignItems: 'center',
     marginBottom: 4,
+    flexWrap: 'wrap',
   },
   metaItem: {
     flexDirection: 'row',
@@ -497,5 +556,19 @@ const styles = StyleSheet.create({
   checkboxChecked: {
     backgroundColor: '#f3e8ff',
     borderColor: '#8b5cf6',
+  },
+  emptyState: {
+    alignItems: 'center',
+    marginTop: 60,
+  },
+  emptyText: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#666',
+    marginBottom: 8,
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: '#999',
   },
 });

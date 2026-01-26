@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { Home, List, PlusCircle } from 'lucide-react-native';
+import { Heart, Home, List, PlusCircle } from 'lucide-react-native';
 
 export default function TabLayout() {
   return (
@@ -18,6 +18,13 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="life"
+        options={{
+          title: 'Life',
+          tabBarIcon: ({ color, size }) => <Heart size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen
         name="all-tasks"
         options={{
           title: 'All Tasks',
@@ -29,6 +36,25 @@ export default function TabLayout() {
         options={{
           title: 'Add Task',
           tabBarIcon: ({ color, size }) => <PlusCircle size={size} color={color} />,
+        }}
+      />
+      {/* Hide non-route files */}
+      <Tabs.Screen
+        name="taskStorage"
+        options={{
+          href: null, // This makes it not appear as a route
+        }}
+      />
+      <Tabs.Screen
+        name="lifeTaskStorage"
+        options={{
+          href: null,
+        }}
+      />
+      <Tabs.Screen
+        name="LifeTaskModal"
+        options={{
+          href: null, // Hide the modal from tabs
         }}
       />
     </Tabs>
