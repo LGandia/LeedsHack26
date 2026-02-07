@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { Heart, Home, List, PlusCircle } from 'lucide-react-native';
+import { Heart, Home, List, MessageCircle, PlusCircle } from 'lucide-react-native';
 
 export default function TabLayout() {
   return (
@@ -36,6 +36,13 @@ export default function TabLayout() {
         options={{
           title: 'Add Task',
           tabBarIcon: ({ color, size }) => <PlusCircle size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="talks"
+        options={{
+          title: 'Talks',
+          tabBarIcon: ({ color, size }) => <MessageCircle size={size} color={color} />,
         }}
       />
       {/* Hide non-route files */}
