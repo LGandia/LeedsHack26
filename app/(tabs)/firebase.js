@@ -19,29 +19,13 @@ const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 
-// ============================================================================
-// USER PROFILE SETUP - Example Code
-// ============================================================================
-// This shows how to create user profiles with tags during onboarding
-// Add this to your onboarding screen or settings screen
-
 import { collection, addDoc, serverTimestamp, query, where, getDocs } from 'firebase/firestore';
-import { db } from './firebase';
 import { ensureAuth } from './podService';
 
-// ============================================================================
-// SAVE USER PROFILE
-// ============================================================================
-
-/**
- * Save or update user profile with tags
- * Call this during onboarding or when user updates their profile
- */
 export const saveUserProfile = async (tags, name = null, goals = []) => {
   try {
     const userId = await ensureAuth();
     
-    // Check if user already has a profile
     const usersRef = collection(db, 'users');
     const q = query(usersRef, where('userId', '==', userId));
     const snapshot = await getDocs(q);
@@ -72,15 +56,6 @@ export const saveUserProfile = async (tags, name = null, goals = []) => {
     throw error;
   }
 };
-
-// ============================================================================
-// EXAMPLE USAGE IN ONBOARDING SCREEN
-// ============================================================================
-
-/**
- * Example onboarding component
- * This is a complete example of how to collect user tags and save them
- */
 
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
@@ -223,40 +198,14 @@ const styles = StyleSheet.create({
   },
 });
 
-// ============================================================================
-// QUICK SETUP EXAMPLES
-// ============================================================================
-
-// Example 1: Create profile for user with ADHD
 export const createADHDProfile = async () => {
   await saveUserProfile(['ADHD', 'Focus Issues'], 'User');
 };
 
-// Example 2: Create profile for user with anxiety
 export const createAnxietyProfile = async () => {
   await saveUserProfile(['Anxiety', 'Stress']);
 };
 
-// Example 3: Manually test in Firebase Console
-// Go to Firestore ? Create Collection ? "users" ? Add Document:
-/*
-{
-  "userId": "your_firebase_auth_uid_here",
-  "tags": ["ADHD", "Anxiety"],
-  "name": "Test User",
-  "goals": [],
-  "createdAt": <use Firestore timestamp>
-}
-*/
-
-// ============================================================================
-// TESTING THE PROFILE
-// ============================================================================
-
-/**
- * Test if the profile is loaded correctly
- * Call this in your app to verify
- */
 export const testUserProfile = async () => {
   const { getUserProfile } = await import('./aiMentorService');
   const profile = await getUserProfile();
