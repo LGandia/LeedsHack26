@@ -4,21 +4,9 @@ import { Alert, Animated, PanResponder, ScrollView, StyleSheet, Text, TouchableO
 import { SafeAreaView } from 'react-native-safe-area-context';
 import PinnedTaskBanner from './PinnedTaskBanner';
 import { getPinnedTask, hasPinnedTask, setPinnedTask } from './pinnedTaskStorage';
-import { getSharedTasks, updateSharedTasks } from './taskStorage';
+import { getSharedTasks, initializeTasks, Task, updateSharedTasks } from './taskStorage';
 
 type EnergyLevel = 'high' | 'medium' | 'low';
-type Priority = 'high' | 'medium' | 'low';
-
-interface Task {
-  id: number;
-  name: string;
-  priority: Priority;
-  energy: EnergyLevel;
-  time: number;
-  type: string;
-  completed: boolean;
-  dueDate?: string;
-}
 
 export default function HomeScreen() {
   const [currentEnergy, setCurrentEnergy] = useState<EnergyLevel>('medium');
@@ -27,7 +15,10 @@ export default function HomeScreen() {
   const [, forceUpdate] = useState({});
 
   useEffect(() => {
-    setTasks(getSharedTasks());
+    // Initialize tasks from AsyncStorage on first load
+    initializeTasks().then(() => {
+      setTasks(getSharedTasks());
+    });
     
     const timer = setInterval(() => {
       setCurrentTime(new Date());
@@ -37,12 +28,12 @@ export default function HomeScreen() {
   }, []);
 
   useEffect(() => {
-  const interval = setInterval(() => {
-    const latestTasks = getSharedTasks();
-    setTasks(latestTasks);
-  }, 500); // Check every 500ms
-  return () => clearInterval(interval);
-}, []);
+    const interval = setInterval(() => {
+      const latestTasks = getSharedTasks();
+      setTasks(latestTasks);
+    }, 500);
+    return () => clearInterval(interval);
+  }, []);
 
   const formatTime = (date: Date) => {
     const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -76,10 +67,10 @@ export default function HomeScreen() {
     return false;
   };
 
-  const toggleTask = (id: number) => {
+  const toggleTask = async (id: number) => {
     const updatedTasks = tasks.map(t => t.id === id ? { ...t, completed: !t.completed } : t);
     setTasks(updatedTasks);
-    updateSharedTasks(updatedTasks);
+    await updateSharedTasks(updatedTasks);
   };
 
   const todayTasks = tasks.filter(t => isToday(t.dueDate));
@@ -96,20 +87,20 @@ export default function HomeScreen() {
   };
 
   const getEnergyColor = (level: EnergyLevel) => {
-  switch(level) {
-    case 'high': return '#F59E0B';      // Warm amber - "You've got this!"
-    case 'medium': return '#8b5cf6';    // Purple - "Steady focus"
-    case 'low': return '#38BDF8';       // Sky blue - "It's okay to go slow"
-  }
-};
+    switch(level) {
+      case 'high': return '#F59E0B';
+      case 'medium': return '#8b5cf6';
+      case 'low': return '#38BDF8';
+    }
+  };
 
   const getEnergyCardColor = (level: EnergyLevel) => {
-  switch(level) {
-    case 'high': return { border: '#F59E0B', bg: '#FEF3C7' };      // Amber border, warm yellow bg
-    case 'medium': return { border: '#8b5cf6', bg: '#F3E8FF' };    // Purple border, light purple bg
-    case 'low': return { border: '#38BDF8', bg: '#E0F2FE' };       // Blue border, light blue bg
-  }
-};
+    switch(level) {
+      case 'high': return { border: '#F59E0B', bg: '#FEF3C7' };
+      case 'medium': return { border: '#8b5cf6', bg: '#F3E8FF' };
+      case 'low': return { border: '#38BDF8', bg: '#E0F2FE' };
+    }
+  };
 
   const getEnergyMessage = () => {
     switch(currentEnergy) {
@@ -312,9 +303,9 @@ export default function HomeScreen() {
   };
 
   return (
-  <SafeAreaView style={styles.container} edges={['top']}>
-    <PinnedTaskBanner onUpdate={() => forceUpdate({})} />
-    <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <PinnedTaskBanner onUpdate={() => forceUpdate({})} />
+      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
         <View style={styles.headerContainer}>
           <Text style={styles.title}>Today&apos;s Focus</Text>
           <Text style={styles.subtitle}>{formatTime(currentTime)}</Text>
@@ -370,8 +361,8 @@ export default function HomeScreen() {
         )}
 
         <View style={{ height: 100 }} />
-       </ScrollView>
-  </SafeAreaView>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 

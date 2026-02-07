@@ -18,13 +18,13 @@ export default function AddTaskScreen() {
   const [dueDate, setDueDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
 
-  const handleAddTask = () => {
+  const handleAddTask = async () => {
     if (!taskName.trim()) {
       Alert.alert('Error', 'Please enter a task name');
       return;
     }
 
-    const newTask = addTask({
+    const newTask = await addTask({
       name: taskName,
       priority,
       energy,
@@ -67,7 +67,6 @@ export default function AddTaskScreen() {
     return `${hours}h ${mins}m`;
   };
 
-  // Convert minutes to Date object for the picker (countdown timer mode)
   const getTimePickerValue = () => {
     const date = new Date();
     date.setHours(Math.floor(timeInMinutes / 60));

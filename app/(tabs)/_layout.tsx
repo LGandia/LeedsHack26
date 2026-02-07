@@ -42,7 +42,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="taskStorage"
         options={{
-          href: null, // This makes it not appear as a route
+          href: null,
         }}
       />
       <Tabs.Screen
@@ -54,19 +54,25 @@ export default function TabLayout() {
       <Tabs.Screen
         name="LifeTaskModal"
         options={{
-          href: null, // Hide the modal from tabs
+          href: null,
+        }}
+      />
+      <Tabs.Screen
+        name="TaskEditModal"
+        options={{
+          href: null,
         }}
       />
       <Tabs.Screen
         name="pinnedTaskStorage"
         options={{
-          href: null, // Hide pinned task storage
+          href: null,
         }}
       />
       <Tabs.Screen
         name="PinnedTaskBanner"
         options={{
-          href: null, // Hide pinned task banner component
+          href: null,
         }}
       />
     </Tabs>
