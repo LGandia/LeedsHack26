@@ -274,8 +274,7 @@ export default function TalksScreen() {
       }
     } catch (error) {
       console.error('Error generating voice:', error);
-    } finally {
-      setGeneratingVoice(false);
+    } finally {      setGeneratingVoice(false);
     }
   };
 
