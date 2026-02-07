@@ -57,6 +57,18 @@ export default function TabLayout() {
           href: null, // Hide the modal from tabs
         }}
       />
+      <Tabs.Screen
+        name="pinnedTaskStorage"
+        options={{
+          href: null, // Hide pinned task storage
+        }}
+      />
+      <Tabs.Screen
+        name="PinnedTaskBanner"
+        options={{
+          href: null, // Hide pinned task banner component
+        }}
+      />
     </Tabs>
   );
 }

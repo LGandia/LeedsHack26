@@ -1,7 +1,9 @@
 import { Calendar, Clock, Coffee, Moon, Zap } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { getSharedTasks } from './taskStorage';
+
 
 type EnergyLevel = 'high' | 'medium' | 'low';
 type Priority = 'high' | 'medium' | 'low';
@@ -88,10 +90,11 @@ export default function AllTasksScreen() {
   const sortedTasks = sortTasks(tasks.filter(t => !t.completed));
   const completedTasks = tasks.filter(t => t.completed);
 
-  return (
-    <View style={styles.container}>
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-        <View style={styles.header}>
+ return (
+  <SafeAreaView style={styles.container} edges={['top']}>
+    <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+ 
+        <View style={styles.headerContainer}>
           <Text style={styles.title}>All Tasks</Text>
           <Text style={styles.subtitle}>{sortedTasks.length} active • {completedTasks.length} completed</Text>
         </View>
@@ -155,7 +158,7 @@ export default function AllTasksScreen() {
           </View>
         )}
       </ScrollView>
-    </View>
+  </SafeAreaView>
   );
 }
 
@@ -170,18 +173,26 @@ const styles = StyleSheet.create({
   scrollContent: {
     padding: 20,
   },
-  header: {
+  headerContainer: {
+    backgroundColor: 'rgba(139, 92, 246, 0.85)',
+    marginHorizontal: -20,
+    marginTop: -20,
+    padding: 24,
+    paddingTop: 20,
     marginBottom: 20,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
   },
   title: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: '#111',
+    color: '#fff',
     marginBottom: 4,
   },
   subtitle: {
     fontSize: 14,
-    color: '#666',
+    color: '#fff',
+    opacity: 0.9,
   },
   sortContainer: {
     flexDirection: 'row',

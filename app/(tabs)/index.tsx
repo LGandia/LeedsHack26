@@ -1,6 +1,9 @@
 import { Check, Clock, Coffee, Moon, Zap } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
-import { Animated, PanResponder, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Animated, PanResponder, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import PinnedTaskBanner from './PinnedTaskBanner';
+import { getPinnedTask, hasPinnedTask, setPinnedTask } from './pinnedTaskStorage';
 import { getSharedTasks, updateSharedTasks } from './taskStorage';
 
 type EnergyLevel = 'high' | 'medium' | 'low';
@@ -21,6 +24,7 @@ export default function HomeScreen() {
   const [currentEnergy, setCurrentEnergy] = useState<EnergyLevel>('medium');
   const [tasks, setTasks] = useState<Task[]>([]);
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [, forceUpdate] = useState({});
 
   useEffect(() => {
     setTasks(getSharedTasks());
@@ -148,6 +152,43 @@ export default function HomeScreen() {
     const colors = getEnergyCardColor(task.energy);
     const EnergyIcon = getEnergyIcon(task.energy);
 
+    const handleLongPress = () => {
+      if (hasPinnedTask()) {
+        const currentPinned = getPinnedTask();
+        Alert.alert(
+          'Replace pinned task?',
+          `You already have "${currentPinned?.name}" pinned.\n\nReplace it with "${task.name}"?`,
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Replace',
+              onPress: () => {
+                setPinnedTask({
+                  id: task.id,
+                  name: task.name,
+                  type: 'task',
+                  time: task.time,
+                  pinnedAt: new Date().toISOString(),
+                });
+                forceUpdate({});
+                Alert.alert('📌 Pinned!', `"${task.name}" is now in focus mode`);
+              },
+            },
+          ]
+        );
+      } else {
+        setPinnedTask({
+          id: task.id,
+          name: task.name,
+          type: 'task',
+          time: task.time,
+          pinnedAt: new Date().toISOString(),
+        });
+        forceUpdate({});
+        Alert.alert('📌 Pinned!', `"${task.name}" is now in focus mode`);
+      }
+    };
+
     const panResponder = PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
@@ -185,42 +226,49 @@ export default function HomeScreen() {
             <Text style={styles.swipeText}>Complete</Text>
           </View>
         )}
-        <Animated.View
-          {...panResponder.panHandlers}
-          style={[
-            styles.taskCard,
-            { borderLeftColor: colors.border, backgroundColor: colors.bg },
-            !suggested && styles.taskCardFaded,
-            {
-              transform: [{ translateX: pan.x }],
-            },
-          ]}
+        <TouchableOpacity
+          onLongPress={handleLongPress}
+          delayLongPress={500}
+          activeOpacity={1}
         >
-          <View style={styles.taskContent}>
-            <View style={styles.taskMain}>
-              <View style={styles.taskHeader}>
-                <Text style={styles.taskName}>{task.name}</Text>
-                {suggested && <View style={styles.recommendedBadge}><Text style={styles.recommendedText}>Recommended</Text></View>}
-              </View>
-              <View style={styles.taskMeta}>
-                <View style={styles.metaItem}>
-                  <Clock size={16} color="#666" />
-                  <Text style={styles.metaText}>{task.time}m</Text>
+          <Animated.View
+            {...panResponder.panHandlers}
+            style={[
+              styles.taskCard,
+              { borderLeftColor: colors.border, backgroundColor: colors.bg },
+              !suggested && styles.taskCardFaded,
+              {
+                transform: [{ translateX: pan.x }],
+              },
+            ]}
+          >
+            <View style={styles.taskContent}>
+              <View style={styles.taskMain}>
+                <View style={styles.taskHeader}>
+                  <Text style={styles.taskName}>{task.name}</Text>
+                  {suggested && <View style={styles.recommendedBadge}><Text style={styles.recommendedText}>Recommended</Text></View>}
                 </View>
-                <View style={styles.metaItem}>
-                  <EnergyIcon size={16} color={getEnergyColor(task.energy)} />
-                  <Text style={styles.metaText}>{task.energy} energy</Text>
-                </View>
-                {task.type && (
-                  <View style={styles.typeBadge}>
-                    <Text style={styles.typeText}>{task.type}</Text>
+                <View style={styles.taskMeta}>
+                  <View style={styles.metaItem}>
+                    <Clock size={16} color="#666" />
+                    <Text style={styles.metaText}>{task.time}m</Text>
                   </View>
-                )}
+                  <View style={styles.metaItem}>
+                    <EnergyIcon size={16} color={getEnergyColor(task.energy)} />
+                    <Text style={styles.metaText}>{task.energy} energy</Text>
+                  </View>
+                  {task.type && (
+                    <View style={styles.typeBadge}>
+                      <Text style={styles.typeText}>{task.type}</Text>
+                    </View>
+                  )}
+                </View>
+                {suggested && <Text style={styles.swipeHint}>← Swipe to complete →</Text>}
+                <Text style={styles.pinHint}>💡 Long-press to pin</Text>
               </View>
-              {suggested && <Text style={styles.swipeHint}>← Swipe to complete →</Text>}
             </View>
-          </View>
-        </Animated.View>
+          </Animated.View>
+        </TouchableOpacity>
       </View>
     );
   };
@@ -264,9 +312,10 @@ export default function HomeScreen() {
   };
 
   return (
-    <View style={styles.container}>
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-        <View style={styles.header}>
+  <SafeAreaView style={styles.container} edges={['top']}>
+    <PinnedTaskBanner onUpdate={() => forceUpdate({})} />
+    <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+        <View style={styles.headerContainer}>
           <Text style={styles.title}>Today&apos;s Focus</Text>
           <Text style={styles.subtitle}>{formatTime(currentTime)}</Text>
         </View>
@@ -321,8 +370,8 @@ export default function HomeScreen() {
         )}
 
         <View style={{ height: 100 }} />
-      </ScrollView>
-    </View>
+       </ScrollView>
+  </SafeAreaView>
   );
 }
 
@@ -337,18 +386,26 @@ const styles = StyleSheet.create({
   scrollContent: {
     padding: 20,
   },
-  header: {
+  headerContainer: {
+    backgroundColor: 'rgba(139, 92, 246, 0.85)',
+    marginHorizontal: -20,
+    marginTop: -20,
+    padding: 24,
+    paddingTop: 20,
     marginBottom: 20,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
   },
   title: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: '#111',
+    color: '#fff',
     marginBottom: 4,
   },
   subtitle: {
     fontSize: 14,
-    color: '#666',
+    color: '#fff',
+    opacity: 0.9,
   },
   energyCard: {
     backgroundColor: '#f8f4ff',
@@ -542,6 +599,11 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#999',
     fontStyle: 'italic',
+  },
+  pinHint: {
+    fontSize: 10,
+    color: '#8b5cf6',
+    marginTop: 4,
   },
   checkbox: {
     width: 24,

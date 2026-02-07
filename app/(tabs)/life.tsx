@@ -1,14 +1,18 @@
 import { Check, Coffee as CoffeeIcon, Edit2, Heart, LucideIcon, Moon, Plus, Settings, Sun } from 'lucide-react-native';
 import React, { useEffect, useRef, useState } from 'react';
-import { ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import LifeTaskModal from './LifeTaskModal';
 import { getLifeTasks, LifeTask, TimeOfDay, toggleLifeTaskCompleted, toggleLifeTaskEnabled } from './lifeTaskStorage';
+import PinnedTaskBanner from './PinnedTaskBanner';
+import { getPinnedTask, hasPinnedTask, setPinnedTask } from './pinnedTaskStorage';
 
 export default function LifeTasksScreen() {
   const [tasks, setTasks] = useState<LifeTask[]>([]);
   const [showSetup, setShowSetup] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const isModalOpenRef = useRef(false);
+  const [, forceUpdate] = useState({});
 
   const [editingTask, setEditingTask] = useState<LifeTask | null>(null);
   const [isCreatingNew, setIsCreatingNew] = useState(false);
@@ -71,6 +75,45 @@ export default function LifeTasksScreen() {
     setTasks(getLifeTasks());
   };
 
+  const handleLongPressLifeTask = (task: LifeTask) => {
+    if (hasPinnedTask()) {
+      const currentPinned = getPinnedTask();
+      Alert.alert(
+        'Replace pinned task?',
+        `You already have "${currentPinned?.name}" pinned.\n\nReplace it with "${task.name}"?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Replace',
+            onPress: () => {
+              setPinnedTask({
+                id: task.id,
+                name: task.name,
+                type: 'life',
+                emoji: task.emoji,
+                timeWindow: task.timeWindow,
+                pinnedAt: new Date().toISOString(),
+              });
+              forceUpdate({});
+              Alert.alert('📌 Pinned!', `"${task.name}" is now in focus mode`);
+            },
+          },
+        ]
+      );
+    } else {
+      setPinnedTask({
+        id: task.id,
+        name: task.name,
+        type: 'life',
+        emoji: task.emoji,
+        timeWindow: task.timeWindow,
+        pinnedAt: new Date().toISOString(),
+      });
+      forceUpdate({});
+      Alert.alert('📌 Pinned!', `"${task.name}" is now in focus mode`);
+    }
+  };
+
   const openEditModal = (task: LifeTask) => {
     setEditingTask(task);
     setIsCreatingNew(false);
@@ -89,27 +132,13 @@ export default function LifeTasksScreen() {
     const completed = dayTasks.filter(t => t.completed).length;
     return { completed, total: dayTasks.length };
   };
-  const getProgressMessage = (task: LifeTask) => {
-  if (!task.repeats || task.repeats <= 1) return null;
-  
-  const remaining = task.repeats - task.completedCount;
-  if (task.completed) {
-    return `All done! 🎉`;
-  } else if (remaining === 1) {
-    return `Almost there! One more 💪`;
-  } else if (task.completedCount > 0) {
-    return `${task.completedCount}/${task.repeats} done today`;
-  } else {
-    return `${task.repeats}x today`;
-  }
-};
-
 
   // Setup screen
   if (showSetup) {
-    return (
-      <View style={styles.container}>
-        <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+  return (
+  <SafeAreaView style={styles.container} edges={['top']}>
+    <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+   
           <View style={styles.setupHeader}>
             <Heart size={40} color="#8b5cf6" />
             <Text style={styles.setupTitle}>Manage Your Reminders</Text>
@@ -179,15 +208,17 @@ export default function LifeTasksScreen() {
           onClose={() => setShowEditModal(false)}
           onSave={() => setTasks(getLifeTasks())}
         />
-      </View>
+        </SafeAreaView>
+
     );
   }
 
   // Main screen - No tasks enabled yet
   if (!hasAnyEnabled) {
     return (
-      <View style={styles.container}>
-        <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+    
           <View style={styles.emptyState}>
             <Heart size={60} color="#8b5cf6" />
             <Text style={styles.emptyTitle}>Life Tasks</Text>
@@ -203,22 +234,24 @@ export default function LifeTasksScreen() {
               <Text style={styles.setupButtonText}>Choose Your Reminders</Text>
             </TouchableOpacity>
           </View>
-        </ScrollView>
-      </View>
+       </ScrollView>
+  </SafeAreaView>
     );
   }
 
   // Main screen - With enabled tasks
   return (
-    <View style={styles.container}>
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-        <View style={styles.header}>
+  <SafeAreaView style={styles.container} edges={['top']}>
+    <PinnedTaskBanner onUpdate={() => forceUpdate({})} />
+    <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+    
+        <View style={styles.headerContainer}>
           <View>
             <Text style={styles.title}>Life Tasks</Text>
             <Text style={styles.subtitle}>Taking care of yourself today 💙</Text>
           </View>
           <TouchableOpacity onPress={() => setShowSetup(true)}>
-            <Settings size={24} color="#666" />
+            <Settings size={24} color="#fff" />
           </TouchableOpacity>
         </View>
 
@@ -246,6 +279,8 @@ export default function LifeTasksScreen() {
               <TouchableOpacity
                 key={task.id}
                 onPress={() => handleToggleTask(task.id)}
+                onLongPress={() => handleLongPressLifeTask(task)}
+                delayLongPress={500}
                 style={[styles.taskCard, task.completed && styles.taskCardCompleted]}
               >
                 <View style={styles.taskLeft}>
@@ -273,7 +308,7 @@ export default function LifeTasksScreen() {
                             />
                           ))}
                         </View>
-                        <Text style={styles.progressText}>
+                        <Text style={styles.progressTextSmall}>
                           {task.completed 
                             ? 'All done! 🎉' 
                             : task.completedCount > 0 
@@ -282,6 +317,7 @@ export default function LifeTasksScreen() {
                         </Text>
                       </View>
                     )}
+                    <Text style={styles.pinHint}>💡 Long-press to pin</Text>
                   </View>
                 </View>
               </TouchableOpacity>
@@ -289,6 +325,7 @@ export default function LifeTasksScreen() {
             </View>
           );
         })}
+            
 
         <View style={styles.encouragement}>
           <Text style={styles.encouragementText}>
@@ -300,7 +337,7 @@ export default function LifeTasksScreen() {
 
         <View style={{ height: 100 }} />
       </ScrollView>
-    </View>
+  </SafeAreaView>
   );
 }
 
@@ -315,21 +352,29 @@ const styles = StyleSheet.create({
   scrollContent: {
     padding: 20,
   },
-  header: {
+  headerContainer: {
+    backgroundColor: 'rgba(139, 92, 246, 0.85)',
+    marginHorizontal: -20,
+    marginTop: -20,
+    padding: 24,
+    paddingTop: 20,
+    marginBottom: 20,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 24,
   },
   title: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: '#111',
+    color: '#fff',
     marginBottom: 4,
   },
   subtitle: {
     fontSize: 14,
-    color: '#666',
+    color: '#fff',
+    opacity: 0.9,
   },
   emptyState: {
     alignItems: 'center',
@@ -486,7 +531,11 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 12,
   },
- 
+  progressText: {
+    fontSize: 13,
+    color: '#8b5cf6',
+    fontWeight: '600',
+  },
   taskCard: {
     backgroundColor: '#f9fafb',
     borderRadius: 12,
@@ -548,27 +597,31 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 20,
   },
-
-progressContainer: {
-  marginTop: 8,
-  gap: 6,
-},
-progressDots: {
-  flexDirection: 'row',
-  gap: 6,
-},
-progressDot: {
-  width: 8,
-  height: 8,
-  borderRadius: 4,
-  backgroundColor: '#d1d5db',
-},
-progressDotFilled: {
-  backgroundColor: '#22c55e',
-},
-progressText: {
-  fontSize: 11,
-  color: '#8b5cf6',
-  fontWeight: '500',
-},
+  progressContainer: {
+    marginTop: 8,
+    gap: 6,
+  },
+  progressDots: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  progressDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#d1d5db',
+  },
+  progressDotFilled: {
+    backgroundColor: '#22c55e',
+  },
+  progressTextSmall: {
+    fontSize: 11,
+    color: '#8b5cf6',
+    fontWeight: '500',
+  },
+  pinHint: {
+    fontSize: 10,
+    color: '#8b5cf6',
+    marginTop: 6,
+  },
 });
