@@ -3,14 +3,13 @@ import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 
 // Firebase configuration
-// Replace these with your actual Firebase project credentials
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_PROJECT_ID.appspot.com",
-  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-  appId: "YOUR_APP_ID"
+  apiKey: "AIzaSyC49xk0IY6ER-NLetAgDu9Pk7cSsilKCPg",
+  authDomain: "leedshack26.firebaseapp.com",
+  projectId: "leedshack26",
+  storageBucket: "leedshack26.firebasestorage.app",
+  messagingSenderId: "314817464747",
+  appId: "1:314817464747:web:d2940c5697afab3564aaee"
 };
 
 // Initialize Firebase

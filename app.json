@@ -20,7 +20,8 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "useNextNotificationsApi": true
+      "useNextNotificationsApi": true,
+      "package": "com.tsuyo7.energyapp"
     },
     "web": {
       "output": "static",
@@ -46,8 +47,12 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "2ab337b1-1cb8-4575-ba2d-41afae4e153e"
+      }
     }
   }
-  
 }
-

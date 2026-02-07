@@ -1,12 +1,345 @@
-import { MessageCircle } from 'lucide-react-native';
-import React, { useState } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { LogOut, MessageCircle, Send } from 'lucide-react-native';
+import React, { useEffect, useState } from 'react';
+import { Alert, Keyboard, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { ensureAuth, findOrCreatePod, getUserPod, isPodExpired, leavePod, sendMessage, subscribeToPodMessages } from './podService';
 
 type TalksTab = 'ai' | 'community';
 
+interface Pod {
+  id: string;
+  struggle: string;
+  supportStyle: string;
+  duration: string;
+  memberCount: number;
+  isActive: boolean;
+  expiresAt: any;
+  [key: string]: any;
+}
+
+interface Message {
+  id: string;
+  type: 'user' | 'system';
+  text: string;
+  userId?: string;
+  createdAt: any;
+}
+
+// ADHD-friendly soft colors for user messages
+const USER_COLORS = [
+  '#E8F5E9', // Soft mint green
+  '#E3F2FD', // Soft sky blue
+  '#FFF9C4', // Soft warm yellow
+  '#F3E5F5', // Soft lavender
+  '#FFE0B2', // Soft peach
+];
+
+// Assign color based on userId
+const getUserColor = (userId: string): string => {
+  const hash = userId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+  return USER_COLORS[hash % USER_COLORS.length];
+};
+
 export default function TalksScreen() {
   const [activeTab, setActiveTab] = useState<TalksTab>('ai');
+  
+  // Community Pods state
+  const [currentPod, setCurrentPod] = useState<Pod | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [messageText, setMessageText] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [currentUserId, setCurrentUserId] = useState<string>('');
+  
+  // Join flow state
+  const [struggle, setStruggle] = useState('');
+  const [supportStyle, setSupportStyle] = useState('');
+  const [duration, setDuration] = useState('');
+  const [joining, setJoining] = useState(false);
+
+  useEffect(() => {
+    if (activeTab === 'community') {
+      loadUserPod();
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    // Get and store current user ID
+    const getCurrentUserId = async () => {
+      const userId = await ensureAuth();
+      setCurrentUserId(userId);
+    };
+    getCurrentUserId();
+  }, []);
+
+  useEffect(() => {
+    if (currentPod) {
+      const unsubscribe = subscribeToPodMessages(currentPod.id, (msgs: Message[]) => {
+        setMessages(msgs);
+      });
+      return () => unsubscribe();
+    }
+  }, [currentPod]);
+
+  const loadUserPod = async () => {
+    setLoading(true);
+    try {
+      const pod = await getUserPod();
+      setCurrentPod(pod as Pod | null);
+    } catch (error) {
+      console.error('Error loading pod:', error);
+    }
+    setLoading(false);
+  };
+
+  const handleJoinPod = async () => {
+    if (!struggle || !supportStyle || !duration) {
+      Alert.alert('Missing Info', 'Please answer all questions');
+      return;
+    }
+
+    setJoining(true);
+    try {
+      const podId = await findOrCreatePod(struggle, supportStyle, duration);
+      await loadUserPod();
+      Alert.alert('Welcome! 🎉', 'You\'ve joined a pod. Be kind and supportive.');
+    } catch (error) {
+      console.error('Error joining pod:', error);
+      Alert.alert('Error', 'Could not join a pod. Please try again.');
+    }
+    setJoining(false);
+  };
+
+  const handleSendMessage = async () => {
+    if (!messageText.trim() || !currentPod) return;
+
+    const textToSend = messageText;
+    setMessageText('');
+    Keyboard.dismiss(); // Dismiss keyboard after sending
+
+    try {
+      await sendMessage(currentPod.id, textToSend);
+    } catch (error) {
+      console.error('Error sending message:', error);
+      Alert.alert('Error', 'Could not send message');
+    }
+  };
+
+  const handleLeavePod = () => {
+    if (!currentPod) return;
+    
+    Alert.alert(
+      'Leave Pod?',
+      'Are you sure you want to leave this pod?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Leave',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await leavePod(currentPod.id);
+              setCurrentPod(null);
+              setMessages([]);
+            } catch (error) {
+              console.error('Error leaving pod:', error);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const formatTimestamp = (timestamp: any) => {
+    if (!timestamp) return '';
+    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+    const hours = date.getHours();
+    const minutes = date.getMinutes();
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    const displayHours = hours % 12 || 12;
+    const displayMinutes = minutes < 10 ? '0' + minutes : minutes;
+    return `${displayHours}:${displayMinutes} ${ampm}`;
+  };
+
+  // Join Pod Screen
+  const renderJoinPodScreen = () => (
+    <ScrollView style={styles.content}>
+      <View style={styles.joinContainer}>
+        <MessageCircle size={60} color="#8b5cf6" />
+        <Text style={styles.joinTitle}>Join a Community Pod</Text>
+        <Text style={styles.joinSubtitle}>
+          Connect with 3-5 others in a safe, temporary space
+        </Text>
+
+        {/* Question 1: Struggle */}
+        <View style={styles.questionSection}>
+          <Text style={styles.questionLabel}>What brings you here today?</Text>
+          <View style={styles.optionButtons}>
+            {['Focus & Motivation', 'Overwhelm', 'Anxiety', 'Loneliness'].map(option => (
+              <TouchableOpacity
+                key={option}
+                style={[styles.optionButton, struggle === option && styles.optionButtonActive]}
+                onPress={() => setStruggle(option)}
+              >
+                <Text style={[styles.optionButtonText, struggle === option && styles.optionButtonTextActive]}>
+                  {option}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
+        {/* Question 2: Support Style */}
+        <View style={styles.questionSection}>
+          <Text style={styles.questionLabel}>What kind of support helps you most?</Text>
+          <View style={styles.optionButtons}>
+            {['Just listening', 'Advice & tips', 'Shared experiences'].map(option => (
+              <TouchableOpacity
+                key={option}
+                style={[styles.optionButton, supportStyle === option && styles.optionButtonActive]}
+                onPress={() => setSupportStyle(option)}
+              >
+                <Text style={[styles.optionButtonText, supportStyle === option && styles.optionButtonTextActive]}>
+                  {option}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
+        {/* Question 3: Duration */}
+        <View style={styles.questionSection}>
+          <Text style={styles.questionLabel}>How long would you like this pod to last?</Text>
+          <View style={styles.optionButtons}>
+            {[
+              { label: '24 hours', value: '24h' },
+              { label: '7 days', value: '7d' },
+            ].map(option => (
+              <TouchableOpacity
+                key={option.value}
+                style={[styles.optionButton, duration === option.value && styles.optionButtonActive]}
+                onPress={() => setDuration(option.value)}
+              >
+                <Text style={[styles.optionButtonText, duration === option.value && styles.optionButtonTextActive]}>
+                  {option.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
+        <TouchableOpacity
+          style={[styles.joinButton, (!struggle || !supportStyle || !duration) && styles.joinButtonDisabled]}
+          onPress={handleJoinPod}
+          disabled={!struggle || !supportStyle || !duration || joining}
+        >
+          <Text style={styles.joinButtonText}>
+            {joining ? 'Finding your pod...' : 'Join a Pod'}
+          </Text>
+        </TouchableOpacity>
+
+        <Text style={styles.privacyNote}>
+          💙 Anonymous • Safe space • No judgment
+        </Text>
+      </View>
+    </ScrollView>
+  );
+
+  // Pod Chat Screen
+  const renderPodChatScreen = () => {
+    if (!currentPod) return null;
+    
+    const expired = isPodExpired(currentPod);
+
+    return (
+      <KeyboardAvoidingView 
+        style={styles.chatContainer}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+      >
+        {/* Pod Header */}
+        <View style={styles.podHeader}>
+          <View style={styles.podHeaderInfo}>
+            <Text style={styles.podHeaderTitle}>Your Pod</Text>
+            <Text style={styles.podHeaderSubtitle}>
+              {currentPod.memberCount} {currentPod.memberCount === 1 ? 'person' : 'people'} • {currentPod.struggle}
+            </Text>
+          </View>
+          <TouchableOpacity onPress={handleLeavePod} style={styles.leaveButton}>
+            <LogOut size={20} color="#ef4444" />
+          </TouchableOpacity>
+        </View>
+
+        {/* Messages */}
+        <ScrollView 
+          style={styles.messagesContainer}
+          contentContainerStyle={styles.messagesContent}
+          keyboardShouldPersistTaps="handled"
+        >
+          {messages.map((msg) => {
+            const isOwnMessage = msg.type === 'user' && msg.userId === currentUserId;
+            
+            return (
+              <View
+                key={msg.id}
+                style={[
+                  styles.messageItem,
+                  msg.type === 'system' && styles.systemMessage,
+                  msg.type === 'user' && (isOwnMessage ? styles.ownMessage : styles.otherMessage),
+                  msg.type === 'user' && msg.userId && { backgroundColor: getUserColor(msg.userId) }
+                ]}
+              >
+                <Text style={[
+                  styles.messageText,
+                  msg.type === 'system' && styles.systemMessageText
+                ]}>
+                  {msg.text}
+                </Text>
+                {msg.type === 'user' && msg.createdAt && (
+                  <Text style={styles.messageTime}>
+                    {formatTimestamp(msg.createdAt)}
+                  </Text>
+                )}
+              </View>
+            );
+          })}
+        </ScrollView>
+
+        {/* Input Area */}
+        {expired ? (
+          <View style={styles.expiredNotice}>
+            <Text style={styles.expiredText}>This pod has ended 💙</Text>
+            <TouchableOpacity
+              style={styles.newPodButton}
+              onPress={() => {
+                setCurrentPod(null);
+                setMessages([]);
+              }}
+            >
+              <Text style={styles.newPodButtonText}>Join a new pod</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={styles.inputContainer}>
+            <TextInput
+              style={styles.input}
+              value={messageText}
+              onChangeText={setMessageText}
+              placeholder="Share your thoughts..."
+              multiline
+              maxLength={500}
+            />
+            <TouchableOpacity
+              style={[styles.sendButton, !messageText.trim() && styles.sendButtonDisabled]}
+              onPress={handleSendMessage}
+              disabled={!messageText.trim()}
+            >
+              <Send size={20} color="#fff" />
+            </TouchableOpacity>
+          </View>
+        )}
+      </KeyboardAvoidingView>
+    );
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -38,8 +371,9 @@ export default function TalksScreen() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.content}>
-        {activeTab === 'ai' ? (
+      {/* Content */}
+      {activeTab === 'ai' ? (
+        <ScrollView style={styles.content}>
           <View style={styles.emptyState}>
             <MessageCircle size={60} color="#8b5cf6" />
             <Text style={styles.emptyTitle}>AI Chat</Text>
@@ -47,16 +381,16 @@ export default function TalksScreen() {
               Chat with AI for support, advice, and encouragement
             </Text>
           </View>
-        ) : (
-          <View style={styles.emptyState}>
-            <MessageCircle size={60} color="#8b5cf6" />
-            <Text style={styles.emptyTitle}>Community Pods</Text>
-            <Text style={styles.emptyText}>
-              Connect with others who understand your journey
-            </Text>
-          </View>
-        )}
-      </ScrollView>
+        </ScrollView>
+      ) : loading ? (
+        <View style={styles.loadingContainer}>
+          <Text style={styles.loadingText}>Loading...</Text>
+        </View>
+      ) : currentPod ? (
+        renderPodChatScreen()
+      ) : (
+        renderJoinPodScreen()
+      )}
     </SafeAreaView>
   );
 }
@@ -124,7 +458,6 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    padding: 20,
   },
   emptyState: {
     alignItems: 'center',
@@ -143,5 +476,212 @@ const styles = StyleSheet.create({
     color: '#666',
     textAlign: 'center',
     lineHeight: 22,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    fontSize: 16,
+    color: '#666',
+  },
+  joinContainer: {
+    padding: 20,
+    alignItems: 'center',
+  },
+  joinTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#111',
+    marginTop: 20,
+    marginBottom: 8,
+  },
+  joinSubtitle: {
+    fontSize: 15,
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 32,
+    lineHeight: 22,
+  },
+  questionSection: {
+    width: '100%',
+    marginBottom: 24,
+  },
+  questionLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111',
+    marginBottom: 12,
+  },
+  optionButtons: {
+    gap: 8,
+  },
+  optionButton: {
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    backgroundColor: '#f3f4f6',
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  optionButtonActive: {
+    backgroundColor: '#f3e8ff',
+    borderColor: '#8b5cf6',
+  },
+  optionButtonText: {
+    fontSize: 15,
+    color: '#666',
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  optionButtonTextActive: {
+    color: '#8b5cf6',
+    fontWeight: '600',
+  },
+  joinButton: {
+    backgroundColor: '#8b5cf6',
+    paddingVertical: 16,
+    paddingHorizontal: 32,
+    borderRadius: 12,
+    marginTop: 16,
+    width: '100%',
+  },
+  joinButtonDisabled: {
+    backgroundColor: '#d1d5db',
+  },
+  joinButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+    textAlign: 'center',
+  },
+  privacyNote: {
+    fontSize: 13,
+    color: '#8b5cf6',
+    marginTop: 16,
+    textAlign: 'center',
+  },
+  chatContainer: {
+    flex: 1,
+  },
+  podHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f4f6',
+    backgroundColor: '#f8f4ff',
+  },
+  podHeaderInfo: {
+    flex: 1,
+  },
+  podHeaderTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#111',
+  },
+  podHeaderSubtitle: {
+    fontSize: 13,
+    color: '#666',
+    marginTop: 2,
+  },
+  leaveButton: {
+    padding: 8,
+  },
+  messagesContainer: {
+    flex: 1,
+    backgroundColor: '#fff',
+  },
+  messagesContent: {
+    padding: 16,
+    gap: 12,
+  },
+  messageItem: {
+    backgroundColor: '#f3f4f6',
+    padding: 12,
+    borderRadius: 12,
+    maxWidth: '80%',
+    alignSelf: 'flex-start',
+  },
+  ownMessage: {
+    alignSelf: 'flex-end',
+  },
+  otherMessage: {
+    alignSelf: 'flex-start',
+  },
+  systemMessage: {
+    backgroundColor: '#f8f4ff',
+    alignSelf: 'center',
+    maxWidth: '90%',
+  },
+  messageText: {
+    fontSize: 15,
+    color: '#111',
+    lineHeight: 20,
+  },
+  systemMessageText: {
+    color: '#8b5cf6',
+    textAlign: 'center',
+    fontSize: 14,
+  },
+  messageTime: {
+    fontSize: 11,
+    color: '#999',
+    marginTop: 4,
+  },
+  inputContainer: {
+    flexDirection: 'row',
+    padding: 12,
+    paddingBottom: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#f3f4f6',
+    backgroundColor: '#fff',
+    gap: 8,
+  },
+  input: {
+    flex: 1,
+    backgroundColor: '#f3f4f6',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    fontSize: 15,
+    maxHeight: 100,
+  },
+  sendButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#8b5cf6',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  sendButtonDisabled: {
+    backgroundColor: '#d1d5db',
+  },
+  expiredNotice: {
+    padding: 20,
+    paddingBottom: 12,
+    backgroundColor: '#f8f4ff',
+    borderTopWidth: 1,
+    borderTopColor: '#e9d5ff',
+    alignItems: 'center',
+  },
+  expiredText: {
+    fontSize: 16,
+    color: '#8b5cf6',
+    marginBottom: 12,
+  },
+  newPodButton: {
+    backgroundColor: '#8b5cf6',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+  },
+  newPodButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#fff',
   },
 });
