@@ -1,21 +1,14 @@
 {
-  // Controls which code actions run when a file is saved
+ 
   "editor.codeActionsOnSave": {
 
-    // Runs all available auto-fix actions (e.g. ESLint fixes)
-    // Set to "explicit" so fixes only run when manually triggered
-    // This prevents unexpected code changes on save
+ 
     "source.fixAll": "explicit",
 
-    // Organizes imports by:
-    // - Removing unused imports
-    // - Sorting remaining imports
-    // Runs only when explicitly triggered, not on every save
+ 
     "source.organizeImports": "explicit",
 
-    // Sorts class members, methods, and properties
-    // Helps keep consistent structure in larger files
-    // Explicit mode avoids automatic reordering while coding
+ 
     "source.sortMembers": "explicit"
   }
 }
