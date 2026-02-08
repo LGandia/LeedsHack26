@@ -1,6 +1,8 @@
-import {
+﻿import {
   addDoc,
   collection,
+  deleteDoc,
+  doc,
   getDocs,
   limit,
   orderBy,
@@ -11,13 +13,33 @@ import {
 import { db } from './firebase';
 import { ensureAuth } from './podService';
 
-// ============================================================================
-// CONFIGURATION
-// ============================================================================
+// Try to get API key from multiple sources
+let GEMINI_API_KEY = '';
 
-// Get your Gemini API key from: https://makersuite.google.com/app/apikey
-// Add to .env: EXPO_PUBLIC_GEMINI_API_KEY=your_key_here
-const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
+try {
+  // Method 1: Try expo-constants first (works with app.config.js)
+  const Constants = require('expo-constants').default;
+  GEMINI_API_KEY = Constants.expoConfig?.extra?.GEMINI_API_KEY || '';
+  console.log('Tried expo-constants:', GEMINI_API_KEY ? 'FOUND' : 'NOT FOUND');
+} catch (error) {
+  console.log('expo-constants not available, trying process.env');
+}
+
+// Method 2: Try process.env (works with .env file)
+if (!GEMINI_API_KEY) {
+  GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
+  console.log('Tried process.env:', GEMINI_API_KEY ? 'FOUND' : 'NOT FOUND');
+}
+
+// Method 3: Check if still not found
+if (!GEMINI_API_KEY) {
+  console.error('⚠️ GEMINI API KEY NOT CONFIGURED!');
+  console.error('Please set EXPO_PUBLIC_GEMINI_API_KEY in your .env file');
+  console.error('Or add it to app.config.js under extra.GEMINI_API_KEY');
+} else {
+  console.log('✅ API Key configured, length:', GEMINI_API_KEY.length);
+  console.log('✅ API Key preview:', GEMINI_API_KEY.substring(0, 10) + '...');
+}
 
 // ============================================================================
 // USER PROFILE MANAGEMENT
@@ -53,8 +75,11 @@ export const getUserProfile = async () => {
 
 // Load conversation history from Firestore
 export const loadConversationHistory = async () => {
+  console.log('=== LOAD CONVERSATION HISTORY START ===');
   try {
     const userId = await ensureAuth();
+    console.log('1. User ID:', userId);
+    
     const chatsRef = collection(db, 'aiMentorChats');
     const q = query(
       chatsRef,
@@ -63,11 +88,15 @@ export const loadConversationHistory = async () => {
       limit(50) // Last 50 messages
     );
     
+    console.log('2. Querying last 50 messages...');
     const snapshot = await getDocs(q);
+    console.log('3. Query complete - found messages:', snapshot.size);
+    
     const messages = [];
     
-    snapshot.forEach((doc) => {
+    snapshot.forEach((doc, index) => {
       const data = doc.data();
+      console.log(`4.${index + 1}. Loading: ${data.role} - ${data.text?.substring(0, 40)}...`);
       messages.push({
         id: doc.id,
         role: data.role,
@@ -77,9 +106,16 @@ export const loadConversationHistory = async () => {
       });
     });
     
-    return messages.reverse(); // Oldest first
+    const reversedMessages = messages.reverse(); // Oldest first
+    console.log('5. Loaded and reversed messages, total:', reversedMessages.length);
+    console.log('=== LOAD CONVERSATION HISTORY END ===');
+    return reversedMessages;
   } catch (error) {
+    console.error('=== LOAD CONVERSATION ERROR ===');
     console.error('Error loading conversation history:', error);
+    console.error('Error code:', error.code);
+    console.error('Error message:', error.message);
+    console.error('==============================');
     return [];
   }
 };
@@ -128,7 +164,7 @@ Your personality:
 - Use casual, natural language - contractions, conversational tone
 - Show empathy and validate feelings
 - Be encouraging but honest
-- Use emojis occasionally (but not excessively) to add warmth ??
+- Use emojis occasionally (but not excessively) to add warmth 💙
 - Keep responses conversational - not too formal or clinical
 - Share relevant insights and practical strategies
 - Ask thoughtful follow-up questions when appropriate
@@ -168,7 +204,7 @@ export const generateWelcomeMessage = (userProfile) => {
     tagContext = " I'm here to support you through the ups and downs.";
   }
   
-  return `${nameGreeting}I'm your AI mentor. ??${tagContext} How are you doing today? What's on your mind?`;
+  return `${nameGreeting}I'm your AI mentor. 💙${tagContext} How are you doing today? What's on your mind?`;
 };
 
 // ============================================================================
@@ -177,25 +213,34 @@ export const generateWelcomeMessage = (userProfile) => {
 
 // Send message to Gemini and get response
 export const sendMessageToMentor = async (userMessage, conversationHistory, userProfile) => {
+  console.log('=== GEMINI API DEBUG START ===');
+  console.log('1. User message:', userMessage);
+  console.log('2. Conversation history length:', conversationHistory.length);
+  console.log('3. User profile:', userProfile);
+  
   try {
+    // Check API key
     if (!GEMINI_API_KEY) {
+      console.error('ERROR: No API key found');
       throw new Error('Gemini API key not configured. Please add EXPO_PUBLIC_GEMINI_API_KEY to your .env file');
     }
+    console.log('4. API key present:', GEMINI_API_KEY.substring(0, 10) + '...');
 
-    // Build conversation history for context
+    // Build system prompt for context
     const systemPrompt = createSystemPrompt(userProfile);
+    console.log('5. System prompt created (length):', systemPrompt.length);
     
-    // Format history for Gemini (last 20 messages for context)
+    // Use the 2.5 Flash-Lite model endpoint
+    const MODEL_NAME = "gemini-2.0-flash-exp";
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent?key=${GEMINI_API_KEY}`;
+    console.log('6. Model:', MODEL_NAME);
+    console.log('7. API URL:', url.substring(0, 80) + '...');
+    
+    // Format history: 2.5 Flash Lite handles long context well, but we'll stick to 20 for speed
     const recentHistory = conversationHistory.slice(-20);
+    console.log('8. Recent history (last 20):', recentHistory.length);
+    
     const contents = [
-      {
-        role: 'user',
-        parts: [{ text: systemPrompt }],
-      },
-      {
-        role: 'model',
-        parts: [{ text: 'I understand. I\'m here to support you with warmth, empathy, and practical guidance. How can I help you today?' }],
-      },
       ...recentHistory.map(msg => ({
         role: msg.role === 'model' ? 'model' : 'user',
         parts: [{ text: msg.text }],
@@ -205,60 +250,69 @@ export const sendMessageToMentor = async (userMessage, conversationHistory, user
         parts: [{ text: userMessage }],
       },
     ];
+    console.log('9. Total contents array length:', contents.length);
+
+    const body = {
+      // 2.5 Models support a dedicated system_instruction field
+      system_instruction: {
+        parts: [{ text: systemPrompt }]
+      },
+      contents,
+      generationConfig: {
+        temperature: 0.8,
+        maxOutputTokens: 1000,
+      },
+      safetySettings: [
+        { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
+        { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
+        { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
+        { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
+      ],
+    };
+    
+    console.log('10. Request body prepared');
+    console.log('11. Making API call...');
 
     // Call Gemini API
-    const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=' + GEMINI_API_KEY, {
+    const response = await fetch(url, {
       method: 'POST',
-      headers: {
+      headers: { 
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        contents,
-        generationConfig: {
-          temperature: 0.9, // More creative and conversational
-          topK: 40,
-          topP: 0.95,
-          maxOutputTokens: 1000,
-        },
-        safetySettings: [
-          {
-            category: 'HARM_CATEGORY_HARASSMENT',
-            threshold: 'BLOCK_MEDIUM_AND_ABOVE',
-          },
-          {
-            category: 'HARM_CATEGORY_HATE_SPEECH',
-            threshold: 'BLOCK_MEDIUM_AND_ABOVE',
-          },
-          {
-            category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT',
-            threshold: 'BLOCK_MEDIUM_AND_ABOVE',
-          },
-          {
-            category: 'HARM_CATEGORY_DANGEROUS_CONTENT',
-            threshold: 'BLOCK_MEDIUM_AND_ABOVE',
-          },
-        ],
-      }),
+      body: JSON.stringify(body),
     });
+
+    console.log('12. Response status:', response.status);
+    console.log('13. Response ok?', response.ok);
 
     if (!response.ok) {
       const errorData = await response.json();
-      console.error('Gemini API error:', errorData);
-      throw new Error(`Gemini API error: ${response.status}`);
+      console.error('14. ERROR - API response:', JSON.stringify(errorData, null, 2));
+      throw new Error(`Gemini API error: ${response.status} - ${JSON.stringify(errorData)}`);
     }
 
     const data = await response.json();
+    console.log('15. Response received');
+    console.log('16. Response data keys:', Object.keys(data));
     
     // Extract the text from the response
-    if (data.candidates && data.candidates[0] && data.candidates[0].content) {
-      const text = data.candidates[0].content.parts[0].text;
-      return text;
+    if (data.candidates && data.candidates[0]?.content) {
+      const responseText = data.candidates[0].content.parts[0].text;
+      console.log('17. SUCCESS - Response length:', responseText.length);
+      console.log('18. Response preview:', responseText.substring(0, 100) + '...');
+      console.log('=== GEMINI API DEBUG END ===');
+      return responseText;
     }
     
+    console.error('19. ERROR - Unexpected response format:', JSON.stringify(data, null, 2));
     throw new Error('Unexpected response format from Gemini API');
   } catch (error) {
-    console.error('Error sending message to Gemini:', error);
-    throw new Error('Failed to get response from AI mentor. Please try again.');
+    console.error('=== GEMINI API ERROR ===');
+    console.error('Error type:', error.name);
+    console.error('Error message:', error.message);
+    console.error('Error stack:', error.stack);
+    console.error('========================');
+    throw new Error(`Failed to get response: ${error.message}`);
   }
 };
 
@@ -266,22 +320,80 @@ export const sendMessageToMentor = async (userMessage, conversationHistory, user
 // CONVERSATION MANAGEMENT
 // ============================================================================
 
-// Clear conversation history (optional feature)
+// Clear conversation history - FIXED VERSION
 export const clearConversationHistory = async () => {
+  console.log('=== DELETE CONVERSATION DEBUG START ===');
   try {
     const userId = await ensureAuth();
+    console.log('1. User ID:', userId);
+    
+    if (!userId) {
+      console.error('ERROR: No user ID found');
+      throw new Error('User not authenticated');
+    }
+    
     const chatsRef = collection(db, 'aiMentorChats');
+    console.log('2. Collection reference created');
+    
     const q = query(chatsRef, where('userId', '==', userId));
+    console.log('3. Query created for userId:', userId);
     
+    console.log('4. Executing query...');
     const snapshot = await getDocs(q);
+    console.log('5. Query completed');
+    console.log('6. Documents found:', snapshot.size);
+    console.log('7. Is snapshot empty?', snapshot.empty);
     
-    // Note: Firestore doesn't have batch delete, so we mark as deleted
-    // Or you can delete from client (not recommended for large datasets)
-    // For now, we'll just create a new conversation effectively
+    if (snapshot.empty) {
+      console.log('8. No messages to delete - collection is empty');
+      console.log('=== DELETE CONVERSATION DEBUG END ===');
+      return;
+    }
     
-    console.log('Conversation history cleared (logically)');
+    // Log all document IDs before deletion
+    console.log('9. Document IDs to delete:');
+    snapshot.docs.forEach((document, index) => {
+      console.log(`   ${index + 1}. ${document.id} - ${document.data().role}: ${document.data().text?.substring(0, 30)}...`);
+    });
+    
+    // Delete each document individually with error handling
+    console.log('10. Starting deletion process...');
+    let successCount = 0;
+    let errorCount = 0;
+    
+    for (let i = 0; i < snapshot.docs.length; i++) {
+      const document = snapshot.docs[i];
+      try {
+        console.log(`11. Deleting document ${i + 1}/${snapshot.docs.length}: ${document.id}`);
+        const docRef = doc(db, 'aiMentorChats', document.id);
+        await deleteDoc(docRef);
+        successCount++;
+        console.log(`    ✅ Successfully deleted ${document.id}`);
+      } catch (error) {
+        errorCount++;
+        console.error(`    ❌ Failed to delete ${document.id}:`, error.message);
+        console.error(`    Error code:`, error.code);
+      }
+    }
+    
+    console.log('12. Deletion complete!');
+    console.log(`    Total documents: ${snapshot.docs.length}`);
+    console.log(`    Successfully deleted: ${successCount}`);
+    console.log(`    Failed to delete: ${errorCount}`);
+    
+    if (errorCount > 0) {
+      console.warn('⚠️ Some documents failed to delete. Check Firebase permissions.');
+      throw new Error(`Deleted ${successCount} messages, but ${errorCount} failed. Check permissions.`);
+    }
+    
+    console.log('=== DELETE CONVERSATION DEBUG END (SUCCESS) ===');
   } catch (error) {
-    console.error('Error clearing conversation:', error);
+    console.error('=== DELETE CONVERSATION ERROR ===');
+    console.error('Error name:', error.name);
+    console.error('Error message:', error.message);
+    console.error('Error code:', error.code);
+    console.error('Full error:', error);
+    console.error('================================');
     throw error;
   }
 };
