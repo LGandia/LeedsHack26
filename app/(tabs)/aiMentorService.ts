@@ -1,6 +1,8 @@
 import {
   addDoc,
   collection,
+  doc,
+  getDoc,
   getDocs,
   limit,
   orderBy,
@@ -19,6 +21,14 @@ import { ensureAuth } from './podService';
 // Add to .env: EXPO_PUBLIC_GEMINI_API_KEY=your_key_here
 const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
 
+// TEMPORARY DEBUG - Remove after testing
+console.log('========== API KEY DEBUG ==========');
+console.log('API Key exists:', !!GEMINI_API_KEY);
+console.log('API Key length:', GEMINI_API_KEY.length);
+console.log('First 10 chars:', GEMINI_API_KEY.substring(0, 10));
+console.log('Last 10 chars:', GEMINI_API_KEY.substring(GEMINI_API_KEY.length - 10));
+console.log('===================================');
+
 // ============================================================================
 // USER PROFILE MANAGEMENT
 // ============================================================================
@@ -27,12 +37,11 @@ const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
 export const getUserProfile = async () => {
   try {
     const userId = await ensureAuth();
-    const usersRef = collection(db, 'users');
-    const q = query(usersRef, where('userId', '==', userId), limit(1));
-    const snapshot = await getDocs(q);
+    const userDocRef = doc(db, 'users', userId);
+    const userDoc = await getDoc(userDocRef);
     
-    if (!snapshot.empty) {
-      const userData = snapshot.docs[0].data();
+    if (userDoc.exists()) {
+      const userData = userDoc.data();
       return {
         tags: userData.tags || [],
         name: userData.name || null,
@@ -64,7 +73,7 @@ export const loadConversationHistory = async () => {
     );
     
     const snapshot = await getDocs(q);
-    const messages = [];
+    const messages: any[] = [];
     
     snapshot.forEach((doc) => {
       const data = doc.data();
@@ -85,7 +94,7 @@ export const loadConversationHistory = async () => {
 };
 
 // Save message to Firestore
-export const saveMessage = async (role, text, audioUrl = null) => {
+export const saveMessage = async (role: string, text: string, audioUrl: string | null = null) => {
   try {
     const userId = await ensureAuth();
     await addDoc(collection(db, 'aiMentorChats'), {
@@ -106,7 +115,7 @@ export const saveMessage = async (role, text, audioUrl = null) => {
 // ============================================================================
 
 // Create personalized system prompt based on user profile
-const createSystemPrompt = (userProfile) => {
+const createSystemPrompt = (userProfile: any) => {
   const { tags = [], name, goals = [] } = userProfile;
   
   const tagContext = tags.length > 0 
@@ -128,7 +137,7 @@ Your personality:
 - Use casual, natural language - contractions, conversational tone
 - Show empathy and validate feelings
 - Be encouraging but honest
-- Use emojis occasionally (but not excessively) to add warmth ??
+- Use emojis occasionally (but not excessively) to add warmth 💙
 - Keep responses conversational - not too formal or clinical
 - Share relevant insights and practical strategies
 - Ask thoughtful follow-up questions when appropriate
@@ -157,7 +166,7 @@ Remember: You're not a therapist, but a supportive mentor who genuinely cares. B
 };
 
 // Generate welcome message based on user profile
-export const generateWelcomeMessage = (userProfile) => {
+export const generateWelcomeMessage = (userProfile: any) => {
   const { name, tags } = userProfile;
   const nameGreeting = name ? `Hi ${name}! ` : 'Hey there! ';
   
@@ -168,7 +177,7 @@ export const generateWelcomeMessage = (userProfile) => {
     tagContext = " I'm here to support you through the ups and downs.";
   }
   
-  return `${nameGreeting}I'm your AI mentor. ??${tagContext} How are you doing today? What's on your mind?`;
+  return `${nameGreeting}I'm your AI mentor. 💙${tagContext} How are you doing today? What's on your mind?`;
 };
 
 // ============================================================================
@@ -176,7 +185,7 @@ export const generateWelcomeMessage = (userProfile) => {
 // ============================================================================
 
 // Send message to Gemini and get response
-export const sendMessageToMentor = async (userMessage, conversationHistory, userProfile) => {
+export const sendMessageToMentor = async (userMessage: string, conversationHistory: any[], userProfile: any) => {
   try {
     if (!GEMINI_API_KEY) {
       throw new Error('Gemini API key not configured. Please add EXPO_PUBLIC_GEMINI_API_KEY to your .env file');
@@ -196,7 +205,7 @@ export const sendMessageToMentor = async (userMessage, conversationHistory, user
         role: 'model',
         parts: [{ text: 'I understand. I\'m here to support you with warmth, empathy, and practical guidance. How can I help you today?' }],
       },
-      ...recentHistory.map(msg => ({
+      ...recentHistory.map((msg: any) => ({
         role: msg.role === 'model' ? 'model' : 'user',
         parts: [{ text: msg.text }],
       })),
@@ -207,8 +216,7 @@ export const sendMessageToMentor = async (userMessage, conversationHistory, user
     ];
 
     // Call Gemini API
-    const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=' + GEMINI_API_KEY, {
-      method: 'POST',
+const response = await fetch('https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash-lite:generateContent?key=' + GEMINI_API_KEY, {      method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },

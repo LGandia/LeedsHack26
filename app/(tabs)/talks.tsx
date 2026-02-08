@@ -1,56 +1,37 @@
-import { LogOut, MessageCircle, Send, Trash2, Volume2, VolumeX } from 'lucide-react-native';
-import React, { useEffect, useRef, useState } from 'react';
-import { 
-  ActivityIndicator,
-  Alert, 
-  Keyboard, 
-  KeyboardAvoidingView, 
-  Platform, 
-  ScrollView, 
-  StyleSheet, 
-  Text, 
-  TextInput, 
-  TouchableOpacity, 
-  View 
-} from 'react-native';
+import { LogOut, MessageCircle, Send } from 'lucide-react-native';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-
-// Pod Services (existing)
-import { 
-  ensureAuth, 
-  findOrCreatePod, 
-  getUserPod, 
-  isPodExpired, 
-  leavePod, 
-  sendMessage as sendPodMessage, 
-  subscribeToPodMessages 
-} from './podService';
-
-// AI Mentor Services (new)
-import {
-  clearConversationHistory,
-  generateWelcomeMessage,
-  getUserProfile,
-  loadConversationHistory,
-  saveMessage,
-  sendMessageToMentor,
-} from './aiMentorService';
-
-// Voice Service (optional - will gracefully handle if API key is missing)
-import { textToSpeech, VOICE_OPTIONS } from './elevenLabsService';
-
-// Uncomment these if you want voice support:
-// import { Audio } from 'expo-av';
-
-// ============================================================================
-// TYPES
-// ============================================================================
+import { generateWelcomeMessage, getUserProfile, loadConversationHistory, saveMessage, sendMessageToMentor } from './aiMentorService';
+import { ensureAuth, findOrCreatePod, getUserPod, isPodExpired, leavePod, sendMessage, subscribeToPodMessages } from './podService';
 
 type TalksTab = 'ai' | 'community';
 
-// ============================================================================
-// CONSTANTS
-// ============================================================================
+interface Pod {
+  id: string;
+  struggle: string;
+  supportStyle: string;
+  duration: string;
+  memberCount: number;
+  isActive: boolean;
+  expiresAt: any;
+  [key: string]: any;
+}
+
+interface Message {
+  id: string;
+  type: 'user' | 'system';
+  text: string;
+  userId?: string;
+  createdAt: any;
+}
+
+interface AIChatMessage {
+  id: string;
+  role: 'user' | 'model';
+  text: string;
+  timestamp: any;
+}
 
 // ADHD-friendly soft colors for user messages
 const USER_COLORS = [
@@ -61,296 +42,147 @@ const USER_COLORS = [
   '#FFE0B2', // Soft peach
 ];
 
-// Quick prompts for AI chat
-const QUICK_PROMPTS = [
-  { text: "I'm feeling overwhelmed", icon: "🌊" },
-  { text: "Help me focus on a task", icon: "🎯" },
-  { text: "I need encouragement", icon: "💪" },
-  { text: "Just need to talk", icon: "💙" },
-];
-
-// ============================================================================
-// HELPER FUNCTIONS
-// ============================================================================
-
 // Assign color based on userId
-const getUserColor = (userId) => {
+const getUserColor = (userId: string): string => {
   const hash = userId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
   return USER_COLORS[hash % USER_COLORS.length];
 };
 
-// Format timestamp
-const formatTimestamp = (timestamp) => {
-  if (!timestamp) return '';
-  const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
-  const now = new Date();
-  const diff = now.getTime() - date.getTime();
-  const minutes = Math.floor(diff / 60000);
-  const hours = Math.floor(diff / 3600000);
-  const days = Math.floor(diff / 86400000);
-
-  if (minutes < 1) return 'Just now';
-  if (minutes < 60) return `${minutes}m ago`;
-  if (hours < 24) return `${hours}h ago`;
-  if (days < 7) return `${days}d ago`;
-  
-  const displayHours = date.getHours() % 12 || 12;
-  const displayMinutes = date.getMinutes() < 10 ? '0' + date.getMinutes() : date.getMinutes();
-  const ampm = date.getHours() >= 12 ? 'PM' : 'AM';
-  return `${displayHours}:${displayMinutes} ${ampm}`;
-};
-
-// ============================================================================
-// MAIN COMPONENT
-// ============================================================================
-
 export default function TalksScreen() {
-  // Tab state
-  const [activeTab, setActiveTab] = useState('ai');
+  const [activeTab, setActiveTab] = useState<TalksTab>('ai');
   
-  // ====== AI MENTOR STATE ======
-  const [aiMessages, setAiMessages] = useState([]);
-  const [aiInputText, setAiInputText] = useState('');
-  const [aiLoading, setAiLoading] = useState(false);
-  const [aiLoadingHistory, setAiLoadingHistory] = useState(true);
-  const [userProfile, setUserProfile] = useState({ tags: [], name: null, goals: [] });
-  const [voiceEnabled, setVoiceEnabled] = useState(false);
-  const [generatingVoice, setGeneratingVoice] = useState(false);
-  const aiScrollViewRef = useRef(null);
-  // const soundRef = useRef(null); // Uncomment if using expo-av
+  // Community Pods state
+  const [currentPod, setCurrentPod] = useState<Pod | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [messageText, setMessageText] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [currentUserId, setCurrentUserId] = useState<string>('');
   
-  // ====== COMMUNITY PODS STATE ======
-  const [currentPod, setCurrentPod] = useState(null);
-  const [podMessages, setPodMessages] = useState([]);
-  const [podMessageText, setPodMessageText] = useState('');
-  const [podLoading, setPodLoading] = useState(true);
-  const [currentUserId, setCurrentUserId] = useState('');
+  // Join flow state
   const [struggle, setStruggle] = useState('');
   const [supportStyle, setSupportStyle] = useState('');
   const [duration, setDuration] = useState('');
   const [joining, setJoining] = useState(false);
 
-  // ============================================================================
-  // EFFECTS
-  // ============================================================================
+  // AI Chat state
+  const [aiMessages, setAiMessages] = useState<AIChatMessage[]>([]);
+  const [aiMessageText, setAiMessageText] = useState('');
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiInitializing, setAiInitializing] = useState(true);
+  const [userProfile, setUserProfile] = useState<any>(null);
 
-  // Initialize on mount
-  useEffect(() => {
-    const init = async () => {
-      const userId = await ensureAuth();
-      setCurrentUserId(userId);
-    };
-    init();
-  }, []);
-
-  // Load AI chat when switching to AI tab
+  // Initialize AI Chat
   useEffect(() => {
     if (activeTab === 'ai') {
-      initializeAIMentor();
+      initializeAIChat();
     }
   }, [activeTab]);
 
-  // Load Community Pod when switching to community tab
+  const initializeAIChat = async () => {
+    try {
+      setAiInitializing(true);
+      const profile = await getUserProfile();
+      setUserProfile(profile);
+      
+      const history = await loadConversationHistory();
+      
+      if (history.length === 0) {
+        // First time - show welcome message
+        const welcomeMsg = generateWelcomeMessage(profile);
+        const welcomeMessage: AIChatMessage = {
+          id: 'welcome-' + Date.now(),
+          role: 'model',
+          text: welcomeMsg,
+          timestamp: new Date(),
+        };
+        setAiMessages([welcomeMessage]);
+      } else {
+        setAiMessages(history);
+      }
+    } catch (error) {
+      console.error('Error initializing AI mentor:', error);
+    } finally {
+      setAiInitializing(false);
+    }
+  };
+
+  const handleSendAIMessage = async () => {
+    if (!aiMessageText.trim()) return;
+
+    const userMsg = aiMessageText.trim();
+    setAiMessageText('');
+
+    // Add user message immediately
+    const userMessage: AIChatMessage = {
+      id: 'user-' + Date.now(),
+      role: 'user',
+      text: userMsg,
+      timestamp: new Date(),
+    };
+    setAiMessages(prev => [...prev, userMessage]);
+
+    setAiLoading(true);
+
+    try {
+      // Save user message
+      await saveMessage('user', userMsg);
+
+      // Get AI response
+      const aiResponse = await sendMessageToMentor(userMsg, aiMessages, userProfile);
+
+      // Add AI response
+      const aiMessage: AIChatMessage = {
+        id: 'model-' + Date.now(),
+        role: 'model',
+        text: aiResponse,
+        timestamp: new Date(),
+      };
+      setAiMessages(prev => [...prev, aiMessage]);
+
+      // Save AI response
+      await saveMessage('model', aiResponse);
+    } catch (error: any) {
+      console.error('Error sending AI message:', error);
+      Alert.alert('Error', error.message || 'Failed to send message. Please try again.');
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  // Community Pods functions (existing code)
   useEffect(() => {
     if (activeTab === 'community') {
       loadUserPod();
     }
   }, [activeTab]);
 
-  // Subscribe to pod messages
+  useEffect(() => {
+    // Get and store current user ID
+    const getCurrentUserId = async () => {
+      const userId = await ensureAuth();
+      setCurrentUserId(userId);
+    };
+    getCurrentUserId();
+  }, []);
+
   useEffect(() => {
     if (currentPod) {
-      const unsubscribe = subscribeToPodMessages(currentPod.id, (msgs) => {
-        setPodMessages(msgs);
+      const unsubscribe = subscribeToPodMessages(currentPod.id, (msgs: Message[]) => {
+        setMessages(msgs);
       });
       return () => unsubscribe();
     }
   }, [currentPod]);
 
-  // Cleanup audio on unmount
-  useEffect(() => {
-    return () => {
-      // if (soundRef.current) {
-      //   soundRef.current.unloadAsync();
-      // }
-    };
-  }, []);
-
-  // ============================================================================
-  // AI MENTOR FUNCTIONS
-  // ============================================================================
-
-  const initializeAIMentor = async () => {
-    try {
-      setAiLoadingHistory(true);
-      
-      // Load user profile
-      const profile = await getUserProfile();
-      setUserProfile(profile);
-
-      // Load conversation history
-      const history = await loadConversationHistory();
-      setAiMessages(history);
-
-      // If no history, send welcome message
-      if (history.length === 0) {
-        const welcomeMessage = generateWelcomeMessage(profile);
-        const welcomeMsg = {
-          role: 'model',
-          text: welcomeMessage,
-          timestamp: new Date(),
-        };
-        setAiMessages([welcomeMsg]);
-        await saveMessage('model', welcomeMessage);
-      }
-    } catch (error) {
-      console.error('Error initializing AI mentor:', error);
-      Alert.alert('Error', 'Failed to load AI mentor');
-    } finally {
-      setAiLoadingHistory(false);
-    }
-  };
-
-  const handleSendAIMessage = async (customText = null) => {
-    const messageText = customText || aiInputText.trim();
-    if (!messageText || aiLoading) return;
-
-    setAiInputText('');
-    Keyboard.dismiss();
-
-    // Add user message to UI immediately
-    const userMsg = {
-      role: 'user',
-      text: messageText,
-      timestamp: new Date(),
-    };
-    setAiMessages(prev => [...prev, userMsg]);
-
-    // Save user message
-    await saveMessage('user', messageText);
-
-    // Get AI response
-    setAiLoading(true);
-    try {
-      const response = await sendMessageToMentor(messageText, aiMessages, userProfile);
-
-      // Add AI response to UI
-      const aiMsg = {
-        role: 'model',
-        text: response,
-        timestamp: new Date(),
-      };
-      setAiMessages(prev => [...prev, aiMsg]);
-
-      // Save AI message
-      await saveMessage('model', response);
-
-      // Generate voice if enabled (optional)
-      if (voiceEnabled) {
-        generateVoiceForMessage(response);
-      }
-
-      // Auto-scroll to bottom
-      setTimeout(() => {
-        aiScrollViewRef.current?.scrollToEnd({ animated: true });
-      }, 100);
-    } catch (error) {
-      console.error('Error getting AI response:', error);
-      Alert.alert('Error', error.message || 'Failed to get response. Please try again.');
-    } finally {
-      setAiLoading(false);
-    }
-  };
-
-  const generateVoiceForMessage = async (text) => {
-    setGeneratingVoice(true);
-    try {
-      const audioBase64 = await textToSpeech(text, VOICE_OPTIONS.sarah.id);
-      
-      if (audioBase64) {
-        // Play the audio (requires expo-av)
-        // await playAudio(audioBase64);
-        console.log('Voice generated successfully');
-      }
-    } catch (error) {
-      console.error('Error generating voice:', error);
-    } finally {      setGeneratingVoice(false);
-    }
-  };
-
-  // Uncomment if using expo-av for voice playback
-  /*
-  const playAudio = async (audioBase64) => {
-    try {
-      if (soundRef.current) {
-        await soundRef.current.unloadAsync();
-      }
-
-      await Audio.setAudioModeAsync({
-        playsInSilentModeIOS: true,
-        staysActiveInBackground: false,
-        shouldDuckAndroid: true,
-      });
-
-      const { sound } = await Audio.Sound.createAsync(
-        { uri: audioBase64 },
-        { shouldPlay: true }
-      );
-
-      soundRef.current = sound;
-    } catch (error) {
-      console.error('Error playing audio:', error);
-    }
-  };
-  */
-
-  const handleClearAIHistory = () => {
-    Alert.alert(
-      'Clear Conversation?',
-      'This will delete your entire conversation history. This cannot be undone.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Clear',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await clearConversationHistory();
-              setAiMessages([]);
-              
-              // Send new welcome message
-              const welcomeMessage = generateWelcomeMessage(userProfile);
-              const welcomeMsg = {
-                role: 'model',
-                text: welcomeMessage,
-                timestamp: new Date(),
-              };
-              setAiMessages([welcomeMsg]);
-              await saveMessage('model', welcomeMessage);
-              
-              Alert.alert('Cleared', 'Conversation history cleared');
-            } catch (error) {
-              Alert.alert('Error', 'Failed to clear history');
-            }
-          },
-        },
-      ]
-    );
-  };
-
-  // ============================================================================
-  // COMMUNITY POD FUNCTIONS
-  // ============================================================================
-
   const loadUserPod = async () => {
-    setPodLoading(true);
+    setLoading(true);
     try {
       const pod = await getUserPod();
-      setCurrentPod(pod);
+      setCurrentPod(pod as Pod | null);
     } catch (error) {
       console.error('Error loading pod:', error);
     }
-    setPodLoading(false);
+    setLoading(false);
   };
 
   const handleJoinPod = async () => {
@@ -361,7 +193,7 @@ export default function TalksScreen() {
 
     setJoining(true);
     try {
-      await findOrCreatePod(struggle, supportStyle, duration);
+      const podId = await findOrCreatePod(struggle, supportStyle, duration);
       await loadUserPod();
       Alert.alert('Welcome! 🎉', 'You\'ve joined a pod. Be kind and supportive.');
     } catch (error) {
@@ -371,15 +203,14 @@ export default function TalksScreen() {
     setJoining(false);
   };
 
-  const handleSendPodMessage = async () => {
-    if (!podMessageText.trim() || !currentPod) return;
+  const handleSendMessage = async () => {
+    if (!messageText.trim() || !currentPod) return;
 
-    const textToSend = podMessageText;
-    setPodMessageText('');
-    Keyboard.dismiss();
+    const textToSend = messageText;
+    setMessageText('');
 
     try {
-      await sendPodMessage(currentPod.id, textToSend);
+      await sendMessage(currentPod.id, textToSend);
     } catch (error) {
       console.error('Error sending message:', error);
       Alert.alert('Error', 'Could not send message');
@@ -401,7 +232,7 @@ export default function TalksScreen() {
             try {
               await leavePod(currentPod.id);
               setCurrentPod(null);
-              setPodMessages([]);
+              setMessages([]);
             } catch (error) {
               console.error('Error leaving pod:', error);
             }
@@ -411,16 +242,24 @@ export default function TalksScreen() {
     );
   };
 
-  // ============================================================================
-  // RENDER FUNCTIONS - AI MENTOR
-  // ============================================================================
+  const formatTimestamp = (timestamp: any) => {
+    if (!timestamp) return '';
+    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+    const hours = date.getHours();
+    const minutes = date.getMinutes();
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    const displayHours = hours % 12 || 12;
+    const displayMinutes = minutes < 10 ? '0' + minutes : minutes;
+    return `${displayHours}:${displayMinutes} ${ampm}`;
+  };
 
+  // AI Chat Screen
   const renderAIChatScreen = () => {
-    if (aiLoadingHistory) {
+    if (aiInitializing) {
       return (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#8b5cf6" />
-          <Text style={styles.loadingText}>Loading your mentor...</Text>
+          <Text style={styles.loadingText}>Initializing AI Mentor...</Text>
         </View>
       );
     }
@@ -431,128 +270,52 @@ export default function TalksScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       >
-        {/* AI Chat Header */}
-        <View style={styles.aiHeader}>
-          <View style={styles.headerLeft}>
-            <Text style={styles.aiHeaderTitle}>AI Mentor</Text>
-            <Text style={styles.aiHeaderSubtitle}>Your personal support companion</Text>
-          </View>
-          <View style={styles.headerActions}>
-            <TouchableOpacity
-              style={[styles.iconButton, voiceEnabled && styles.iconButtonActive]}
-              onPress={() => setVoiceEnabled(!voiceEnabled)}
-            >
-              {voiceEnabled ? (
-                <Volume2 size={20} color="#8b5cf6" />
-              ) : (
-                <VolumeX size={20} color="#666" />
-              )}
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.iconButton} onPress={handleClearAIHistory}>
-              <Trash2 size={20} color="#ef4444" />
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Quick Prompts */}
         <ScrollView 
-          horizontal 
-          style={styles.quickPromptsContainer}
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.quickPromptsContent}
-        >
-          {QUICK_PROMPTS.map((prompt, index) => (
-            <TouchableOpacity
-              key={index}
-              style={styles.quickPrompt}
-              onPress={() => handleSendAIMessage(prompt.text)}
-            >
-              <Text style={styles.quickPromptIcon}>{prompt.icon}</Text>
-              <Text style={styles.quickPromptText}>{prompt.text}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-
-        {/* Messages */}
-        <ScrollView
-          ref={aiScrollViewRef}
           style={styles.messagesContainer}
           contentContainerStyle={styles.messagesContent}
-          keyboardShouldPersistTaps="handled"
-          onContentSizeChange={() => {
-            aiScrollViewRef.current?.scrollToEnd({ animated: true });
-          }}
         >
-          {aiMessages.map((msg, index) => (
+          {aiMessages.map((msg) => (
             <View
-              key={index}
+              key={msg.id}
               style={[
-                styles.messageWrapper,
-                msg.role === 'user' ? styles.userMessageWrapper : styles.aiMessageWrapper,
+                styles.aiMessageItem,
+                msg.role === 'user' ? styles.aiUserMessage : styles.aiModelMessage
               ]}
             >
-              <View
-                style={[
-                  styles.messageBubble,
-                  msg.role === 'user' ? styles.userMessage : styles.aiMessage,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.messageText,
-                    msg.role === 'user' ? styles.userMessageText : styles.aiMessageText,
-                  ]}
-                >
-                  {msg.text}
-                </Text>
-                <Text style={[
-                  styles.messageTime,
-                  msg.role === 'user' && styles.userMessageTime
-                ]}>
+              <Text style={[
+                styles.messageText,
+                msg.role === 'user' && styles.aiUserMessageText
+              ]}>
+                {msg.text}
+              </Text>
+              {msg.timestamp && (
+                <Text style={styles.messageTime}>
                   {formatTimestamp(msg.timestamp)}
                 </Text>
-              </View>
+              )}
             </View>
           ))}
-          
           {aiLoading && (
-            <View style={styles.aiMessageWrapper}>
-              <View style={[styles.messageBubble, styles.aiMessage]}>
-                <ActivityIndicator size="small" color="#8b5cf6" />
-                <Text style={[styles.messageText, styles.aiMessageText, styles.typingText]}>
-                  Thinking...
-                </Text>
-              </View>
-            </View>
-          )}
-
-          {generatingVoice && (
-            <View style={styles.voiceIndicator}>
-              <Volume2 size={16} color="#8b5cf6" />
-              <Text style={styles.voiceIndicatorText}>Generating voice...</Text>
+            <View style={[styles.aiMessageItem, styles.aiModelMessage]}>
+              <ActivityIndicator size="small" color="#8b5cf6" />
+              <Text style={styles.loadingText}>Thinking...</Text>
             </View>
           )}
         </ScrollView>
 
-        {/* Input Area */}
         <View style={styles.inputContainer}>
           <TextInput
             style={styles.input}
-            value={aiInputText}
-            onChangeText={setAiInputText}
-            placeholder="Share what's on your mind..."
-            placeholderTextColor="#999"
+            value={aiMessageText}
+            onChangeText={setAiMessageText}
+            placeholder="Message your AI mentor..."
             multiline
-            maxLength={1000}
-            editable={!aiLoading}
+            maxLength={500}
           />
           <TouchableOpacity
-            style={[
-              styles.sendButton,
-              (!aiInputText.trim() || aiLoading) && styles.sendButtonDisabled,
-            ]}
-            onPress={() => handleSendAIMessage()}
-            disabled={!aiInputText.trim() || aiLoading}
+            style={[styles.sendButton, (!aiMessageText.trim() || aiLoading) && styles.sendButtonDisabled]}
+            onPress={handleSendAIMessage}
+            disabled={!aiMessageText.trim() || aiLoading}
           >
             <Send size={20} color="#fff" />
           </TouchableOpacity>
@@ -561,10 +324,7 @@ export default function TalksScreen() {
     );
   };
 
-  // ============================================================================
-  // RENDER FUNCTIONS - COMMUNITY PODS
-  // ============================================================================
-
+  // Community Pods screens (existing code - Join Pod Screen)
   const renderJoinPodScreen = () => (
     <ScrollView style={styles.content}>
       <View style={styles.joinContainer}>
@@ -648,6 +408,7 @@ export default function TalksScreen() {
     </ScrollView>
   );
 
+  // Pod Chat Screen (existing code)
   const renderPodChatScreen = () => {
     if (!currentPod) return null;
     
@@ -678,7 +439,7 @@ export default function TalksScreen() {
           contentContainerStyle={styles.messagesContent}
           keyboardShouldPersistTaps="handled"
         >
-          {podMessages.map((msg) => {
+          {messages.map((msg) => {
             const isOwnMessage = msg.type === 'user' && msg.userId === currentUserId;
             
             return (
@@ -698,7 +459,7 @@ export default function TalksScreen() {
                   {msg.text}
                 </Text>
                 {msg.type === 'user' && msg.createdAt && (
-                  <Text style={styles.podMessageTime}>
+                  <Text style={styles.messageTime}>
                     {formatTimestamp(msg.createdAt)}
                   </Text>
                 )}
@@ -715,7 +476,7 @@ export default function TalksScreen() {
               style={styles.newPodButton}
               onPress={() => {
                 setCurrentPod(null);
-                setPodMessages([]);
+                setMessages([]);
               }}
             >
               <Text style={styles.newPodButtonText}>Join a new pod</Text>
@@ -725,16 +486,16 @@ export default function TalksScreen() {
           <View style={styles.inputContainer}>
             <TextInput
               style={styles.input}
-              value={podMessageText}
-              onChangeText={setPodMessageText}
+              value={messageText}
+              onChangeText={setMessageText}
               placeholder="Share your thoughts..."
               multiline
               maxLength={500}
             />
             <TouchableOpacity
-              style={[styles.sendButton, !podMessageText.trim() && styles.sendButtonDisabled]}
-              onPress={handleSendPodMessage}
-              disabled={!podMessageText.trim()}
+              style={[styles.sendButton, !messageText.trim() && styles.sendButtonDisabled]}
+              onPress={handleSendMessage}
+              disabled={!messageText.trim()}
             >
               <Send size={20} color="#fff" />
             </TouchableOpacity>
@@ -744,10 +505,6 @@ export default function TalksScreen() {
     );
   };
 
-  // ============================================================================
-  // MAIN RENDER
-  // ============================================================================
-
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.headerContainer}>
@@ -755,14 +512,14 @@ export default function TalksScreen() {
         <Text style={styles.subtitle}>Connect and share with others</Text>
       </View>
 
-      {/* Tabs */}
+      {/* Browser-style tabs */}
       <View style={styles.tabsContainer}>
         <TouchableOpacity
           style={[styles.tab, activeTab === 'ai' && styles.tabActive]}
           onPress={() => setActiveTab('ai')}
         >
           <Text style={[styles.tabText, activeTab === 'ai' && styles.tabTextActive]}>
-            AI Mentor
+            AI Chat
           </Text>
           {activeTab === 'ai' && <View style={styles.tabIndicator} />}
         </TouchableOpacity>
@@ -781,7 +538,7 @@ export default function TalksScreen() {
       {/* Content */}
       {activeTab === 'ai' ? (
         renderAIChatScreen()
-      ) : podLoading ? (
+      ) : loading ? (
         <View style={styles.loadingContainer}>
           <Text style={styles.loadingText}>Loading...</Text>
         </View>
@@ -793,10 +550,6 @@ export default function TalksScreen() {
     </SafeAreaView>
   );
 }
-
-// ============================================================================
-// STYLES
-// ============================================================================
 
 const styles = StyleSheet.create({
   container: {
@@ -821,8 +574,6 @@ const styles = StyleSheet.create({
     color: '#fff',
     opacity: 0.9,
   },
-  
-  // Tabs
   tabsContainer: {
     flexDirection: 'row',
     paddingHorizontal: 20,
@@ -861,163 +612,83 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 2,
     borderTopRightRadius: 2,
   },
-
-  // Loading
+  content: {
+    flex: 1,
+  },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#fff',
   },
   loadingText: {
-    marginTop: 16,
     fontSize: 16,
     color: '#666',
+    marginTop: 12,
   },
-
-  // AI Chat
   chatContainer: {
     flex: 1,
   },
-  aiHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f3f4f6',
-  },
-  headerLeft: {
-    flex: 1,
-  },
-  aiHeaderTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#111',
-  },
-  aiHeaderSubtitle: {
-    fontSize: 13,
-    color: '#666',
-    marginTop: 2,
-  },
-  headerActions: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  iconButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#f3f4f6',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  iconButtonActive: {
-    backgroundColor: '#f3e8ff',
-  },
-
-  // Quick Prompts
-  quickPromptsContainer: {
-    borderBottomWidth: 1,
-    borderBottomColor: '#f3f4f6',
-  },
-  quickPromptsContent: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    gap: 8,
-  },
-  quickPrompt: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    backgroundColor: '#f8f4ff',
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#e9d5ff',
-    marginRight: 8,
-  },
-  quickPromptIcon: {
-    fontSize: 16,
-    marginRight: 6,
-  },
-  quickPromptText: {
-    fontSize: 13,
-    color: '#8b5cf6',
-    fontWeight: '500',
-  },
-
-  // Messages
   messagesContainer: {
     flex: 1,
+    backgroundColor: '#fff',
   },
   messagesContent: {
     padding: 16,
-    paddingBottom: 8,
+    gap: 12,
   },
-  messageWrapper: {
-    marginBottom: 16,
-    maxWidth: '85%',
+  aiMessageItem: {
+    padding: 12,
+    borderRadius: 12,
+    maxWidth: '80%',
   },
-  userMessageWrapper: {
+  aiUserMessage: {
     alignSelf: 'flex-end',
+    backgroundColor: '#8b5cf6',
   },
-  aiMessageWrapper: {
+  aiModelMessage: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#f3f4f6',
+  },
+  aiUserMessageText: {
+    color: '#fff',
+  },
+  messageItem: {
+    backgroundColor: '#f3f4f6',
+    padding: 12,
+    borderRadius: 12,
+    maxWidth: '80%',
     alignSelf: 'flex-start',
   },
-  messageBubble: {
-    padding: 14,
-    borderRadius: 16,
+  ownMessage: {
+    alignSelf: 'flex-end',
   },
-  userMessage: {
-    backgroundColor: '#8b5cf6',
-    borderBottomRightRadius: 4,
+  otherMessage: {
+    alignSelf: 'flex-start',
   },
-  aiMessage: {
-    backgroundColor: '#f3f4f6',
-    borderBottomLeftRadius: 4,
+  systemMessage: {
+    backgroundColor: '#f8f4ff',
+    alignSelf: 'center',
+    maxWidth: '90%',
   },
   messageText: {
     fontSize: 15,
-    lineHeight: 22,
-  },
-  userMessageText: {
-    color: '#fff',
-  },
-  aiMessageText: {
     color: '#111',
+    lineHeight: 20,
+  },
+  systemMessageText: {
+    color: '#8b5cf6',
+    textAlign: 'center',
+    fontSize: 14,
   },
   messageTime: {
     fontSize: 11,
-    marginTop: 6,
     color: '#999',
+    marginTop: 4,
   },
-  userMessageTime: {
-    color: '#fff',
-    opacity: 0.8,
-  },
-  typingText: {
-    fontStyle: 'italic',
-    opacity: 0.7,
-  },
-  voiceIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 8,
-    alignSelf: 'flex-start',
-  },
-  voiceIndicatorText: {
-    fontSize: 13,
-    color: '#8b5cf6',
-    fontStyle: 'italic',
-  },
-
-  // Input
   inputContainer: {
     flexDirection: 'row',
     padding: 12,
-    paddingBottom: 20,
+    paddingBottom: 8,
     borderTopWidth: 1,
     borderTopColor: '#f3f4f6',
     backgroundColor: '#fff',
@@ -1028,26 +699,20 @@ const styles = StyleSheet.create({
     backgroundColor: '#f3f4f6',
     borderRadius: 20,
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 10,
     fontSize: 15,
     maxHeight: 100,
-    color: '#111',
   },
   sendButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: '#8b5cf6',
     justifyContent: 'center',
     alignItems: 'center',
   },
   sendButtonDisabled: {
     backgroundColor: '#d1d5db',
-  },
-
-  // Community Pods
-  content: {
-    flex: 1,
   },
   joinContainer: {
     padding: 20,
@@ -1125,8 +790,6 @@ const styles = StyleSheet.create({
     marginTop: 16,
     textAlign: 'center',
   },
-
-  // Pod Chat
   podHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1151,35 +814,6 @@ const styles = StyleSheet.create({
   },
   leaveButton: {
     padding: 8,
-  },
-  messageItem: {
-    backgroundColor: '#f3f4f6',
-    padding: 12,
-    borderRadius: 12,
-    maxWidth: '80%',
-    alignSelf: 'flex-start',
-    marginBottom: 12,
-  },
-  ownMessage: {
-    alignSelf: 'flex-end',
-  },
-  otherMessage: {
-    alignSelf: 'flex-start',
-  },
-  systemMessage: {
-    backgroundColor: '#f8f4ff',
-    alignSelf: 'center',
-    maxWidth: '90%',
-  },
-  systemMessageText: {
-    color: '#8b5cf6',
-    textAlign: 'center',
-    fontSize: 14,
-  },
-  podMessageTime: {
-    fontSize: 11,
-    color: '#999',
-    marginTop: 4,
   },
   expiredNotice: {
     padding: 20,
