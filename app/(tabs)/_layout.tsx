@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { Heart, Home, List, MessageCircle, PlusCircle } from 'lucide-react-native';
+import { Eye, Heart, Home, List, MessageCircle, PlusCircle } from 'lucide-react-native';
 
 export default function TabLayout() {
   return (
@@ -39,12 +39,20 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="focus"
+        options={{
+          title: 'Focus',
+          tabBarIcon: ({ color, size }) => <Eye size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen
         name="talks"
         options={{
           title: 'Talks',
           tabBarIcon: ({ color, size }) => <MessageCircle size={size} color={color} />,
         }}
       />
+      
       {/* Hide non-route files */}
       <Tabs.Screen
         name="taskStorage"
@@ -78,6 +86,30 @@ export default function TabLayout() {
       />
       <Tabs.Screen
         name="PinnedTaskBanner"
+        options={{
+          href: null,
+        }}
+      />
+      <Tabs.Screen
+        name="firebase"
+        options={{
+          href: null,
+        }}
+      />
+      <Tabs.Screen
+        name="podService"
+        options={{
+          href: null,
+        }}
+      />
+      <Tabs.Screen
+        name="aiMentorService"
+        options={{
+          href: null,
+        }}
+      />
+      <Tabs.Screen
+        name="elevenLabsService"
         options={{
           href: null,
         }}
