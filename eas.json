@@ -13,13 +13,13 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_GEMINI_API_KEY": "AIzaSyA1B3ljuYzYOt2eV6h2bAvgiJJ1QJ9tDYA",
+        "EXPO_PUBLIC_GEMINI_API_KEY": "AIzaSyAc8AjDhGJloLb2YtYIAzmujM5trGtsVDM",
         "EXPO_PUBLIC_ELEVENLABS_API_KEY": "sk_40b76b3217924d534875fb6f970fc49f7a7dc8f3a21694cc"
       }
     },
     "production": {
       "env": {
-        "EXPO_PUBLIC_GEMINI_API_KEY": "AIzaSyA1B3ljuYzYOt2eV6h2bAvgiJJ1QJ9tDYA",
+        "EXPO_PUBLIC_GEMINI_API_KEY": "AIzaSyAc8AjDhGJloLb2YtYIAzmujM5trGtsVDM",
         "EXPO_PUBLIC_ELEVENLABS_API_KEY": "sk_40b76b3217924d534875fb6f970fc49f7a7dc8f3a21694cc"
       }
     }
