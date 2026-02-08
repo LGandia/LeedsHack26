@@ -3,7 +3,7 @@ import { Calendar } from 'lucide-react-native';
 import React, { useState } from 'react';
 import { Alert, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { addTask, getSharedTasks } from './taskStorage';
+import { addTask, getSharedTasks } from '../taskStorage';
 
 type EnergyLevel = 'high' | 'medium' | 'low';
 type Priority = 'high' | 'medium' | 'low';

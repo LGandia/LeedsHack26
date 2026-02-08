@@ -2,8 +2,8 @@ import { Calendar, Clock, Coffee, Edit2, Moon, Zap } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { getSharedTasks, initializeTasks, Task } from '../taskStorage';
 import TaskEditModal from './TaskEditModal';
-import { getSharedTasks, initializeTasks, Task } from './taskStorage';
 
 type EnergyLevel = 'high' | 'medium' | 'low';
 type SortBy = 'date' | 'priority';

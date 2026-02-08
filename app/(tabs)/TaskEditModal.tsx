@@ -2,7 +2,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { Calendar, Trash2, X } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
 import { Alert, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { deleteTask, Task, updateTask } from './taskStorage';
+import { deleteTask, Task, updateTask } from '../taskStorage';
 
 type EnergyLevel = 'high' | 'medium' | 'low';
 type Priority = 'high' | 'medium' | 'low';

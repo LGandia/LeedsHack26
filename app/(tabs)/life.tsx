@@ -2,10 +2,10 @@ import { Check, Coffee as CoffeeIcon, Edit2, Heart, LucideIcon, Moon, Plus, Sett
 import React, { useEffect, useRef, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { getLifeTasks, initializeLifeTasks, LifeTask, TimeOfDay, toggleLifeTaskCompleted, toggleLifeTaskEnabled } from '../lifeTaskStorage';
+import { getPinnedTask, hasPinnedTask, setPinnedTask } from '../pinnedTaskStorage';
 import LifeTaskModal from './LifeTaskModal';
-import { getLifeTasks, initializeLifeTasks, LifeTask, TimeOfDay, toggleLifeTaskCompleted, toggleLifeTaskEnabled } from './lifeTaskStorage';
 import PinnedTaskBanner from './PinnedTaskBanner';
-import { getPinnedTask, hasPinnedTask, setPinnedTask } from './pinnedTaskStorage';
 
 export default function LifeTasksScreen() {
   const [tasks, setTasks] = useState<LifeTask[]>([]);

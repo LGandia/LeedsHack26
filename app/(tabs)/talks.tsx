@@ -2,9 +2,9 @@ import { LogOut, MessageCircle, Send, Volume2, VolumeX } from 'lucide-react-nati
 import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { generateWelcomeMessage, getUserProfile, loadConversationHistory, saveMessage, sendMessageToMentor } from './aiMentorService';
-import { ensureAuth, findOrCreatePod, getUserPod, isPodExpired, leavePod, sendMessage, subscribeToPodMessages } from './podService';
-import { playAudio, textToSpeech } from './ttsService';
+import { generateWelcomeMessage, getUserProfile, loadConversationHistory, saveMessage, sendMessageToMentor } from '../aiMentorService';
+import { ensureAuth, findOrCreatePod, getUserPod, isPodExpired, leavePod, sendMessage, subscribeToPodMessages } from '../podService';
+import { playAudio, textToSpeech } from '../ttsService';
 
 type TalksTab = 'ai' | 'community';
 

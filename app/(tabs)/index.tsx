@@ -2,9 +2,9 @@ import { Check, Clock, Coffee, Moon, Zap } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
 import { Alert, Animated, PanResponder, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { getPinnedTask, hasPinnedTask, setPinnedTask } from '../pinnedTaskStorage';
+import { getSharedTasks, initializeTasks, Task, updateSharedTasks } from '../taskStorage';
 import PinnedTaskBanner from './PinnedTaskBanner';
-import { getPinnedTask, hasPinnedTask, setPinnedTask } from './pinnedTaskStorage';
-import { getSharedTasks, initializeTasks, Task, updateSharedTasks } from './taskStorage';
 
 type EnergyLevel = 'high' | 'medium' | 'low';
 

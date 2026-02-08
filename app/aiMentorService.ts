@@ -13,7 +13,6 @@
 import { db } from './firebase';
 import { ensureAuth } from './podService';
 import { TASK_MANAGEMENT_TOOLS, executeTaskTool } from './taskTools';
-
 // ============================================================================
 // CONFIGURATION
 // ============================================================================

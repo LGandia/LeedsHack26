@@ -1,7 +1,7 @@
 import { Trash2, X } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
 import { Alert, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { addLifeTask, deleteLifeTask, LifeTask, TimeOfDay, updateLifeTask } from './lifeTaskStorage';
+import { addLifeTask, deleteLifeTask, LifeTask, TimeOfDay, updateLifeTask } from '../lifeTaskStorage';
 
 interface LifeTaskModalProps {
   visible: boolean;
