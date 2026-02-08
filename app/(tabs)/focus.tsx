@@ -1,29 +1,29 @@
-﻿import React, { useState, useEffect, useRef } from 'react';
+﻿import { CameraView, useCameraPermissions } from 'expo-camera';
+import { Eye, Play, Square } from 'lucide-react-native';
+import React, { useEffect, useRef, useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
   Alert,
   Dimensions,
   ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { CameraView, useCameraPermissions } from 'expo-camera';
-import { Play, Square, Eye, EyeOff } from 'lucide-react-native';
 import { LineChart } from 'react-native-chart-kit';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 
 // Color overlays for focus screen
 const OVERLAY_COLORS = [
   { name: 'No Overlay', color: 'transparent', opacity: 0 },
-  { name: 'Calm Blue', color: '#3b82f6', opacity: 1.0 },
-  { name: 'Forest Green', color: '#10b981', opacity: 1.0 },
-  { name: 'Warm Beige', color: '#d4b896', opacity: 1.0 },
-  { name: 'Soft Purple', color: '#8b5cf6', opacity: 1.0 },
-  { name: 'Deep Gray', color: '#4b5563', opacity: 1.0 },
-  { name: 'Ocean Teal', color: '#14b8a6', opacity: 1.0 },
+  { name: 'Calm Blue', color: '#3b82f6', opacity: 0.85 },
+  { name: 'Forest Green', color: '#10b981', opacity: 0.85 },
+  { name: 'Warm Beige', color: '#d4b896', opacity: 0.85 },
+  { name: 'Soft Purple', color: '#8b5cf6', opacity: 0.85 },
+  { name: 'Deep Gray', color: '#4b5563', opacity: 0.85 },
+  { name: 'Ocean Teal', color: '#14b8a6', opacity: 0.85 },
 ];
 
 export default function FocusScreen() {
@@ -44,8 +44,8 @@ export default function FocusScreen() {
   const [stateTimer, setStateTimer] = useState(0);
   
   // Refs
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const trackingRef = useRef<NodeJS.Timeout | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const trackingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   
   // Format time as MM:SS
   const formatTime = (seconds: number) => {
@@ -84,7 +84,6 @@ export default function FocusScreen() {
       // const presageFocus = await PresageFocusTracker.getCurrentFocus();
       
       // TEMPORARY: Realistic focus simulation
-      // This simulates actual human behavior patterns
       setStateTimer(prev => {
         const newTimer = prev + 1;
         
@@ -95,56 +94,64 @@ export default function FocusScreen() {
           // After 20-50 seconds of focus, user might get distracted
           if (Math.random() < 0.3) { // 30% chance
             newState = 'distracted';
+            setUserState(newState);
             return 0; // Reset timer
           }
         } else if (userState === 'distracted' && newTimer > 5 + Math.random() * 10) {
           // After 5-15 seconds of distraction, user starts returning
           newState = 'returning';
+          setUserState(newState);
           return 0;
         } else if (userState === 'returning' && newTimer > 3 + Math.random() * 5) {
           // After 3-8 seconds of returning, user is focused again
           newState = 'focused';
+          setUserState(newState);
           return 0;
         }
         
-        setUserState(newState);
         return newTimer;
       });
       
       // Calculate new focus based on state
-      let targetFocus = currentFocus;
-      let change = 0;
-      
-      switch (userState) {
-        case 'focused':
-          // Gradually increase focus to 75-95%
-          targetFocus = 75 + Math.random() * 20;
-          change = (targetFocus - currentFocus) * 0.15; // Gradual increase
-          break;
-        case 'distracted':
-          // Drop to 20-40%
-          targetFocus = 20 + Math.random() * 20;
-          change = (targetFocus - currentFocus) * 0.25; // Faster decrease
-          break;
-        case 'returning':
-          // Recovering to 50-70%
-          targetFocus = 50 + Math.random() * 20;
-          change = (targetFocus - currentFocus) * 0.2;
-          break;
-      }
-      
-      // Add some natural variation (breathing, micro-movements)
-      const microVariation = (Math.random() - 0.5) * 3;
-      
-      const newFocus = Math.max(10, Math.min(100, 
-        currentFocus + change + microVariation
-      ));
-      
-      setCurrentFocus(Math.round(newFocus));
-      setFocusData(prev => {
-        const updated = [...prev, Math.round(newFocus)];
-        // Keep last 60 data points (1 per second for 1 minute view)
-        return updated.slice(-60);
+      setCurrentFocus(prevFocus => {
+        let targetFocus = prevFocus;
+        let change = 0;
+        
+        switch (userState) {
+          case 'focused':
+            // Gradually increase focus to 75-95%
+            targetFocus = 75 + Math.random() * 20;
+            change = (targetFocus - prevFocus) * 0.15; // Gradual increase
+            break;
+          case 'distracted':
+            // Drop to 20-40%
+            targetFocus = 20 + Math.random() * 20;
+            change = (targetFocus - prevFocus) * 0.25; // Faster decrease
+            break;
+          case 'returning':
+            // Recovering to 50-70%
+            targetFocus = 50 + Math.random() * 20;
+            change = (targetFocus - prevFocus) * 0.2;
+            break;
+        }
+        
+        // Add some natural variation (breathing, micro-movements)
+        const microVariation = (Math.random() - 0.5) * 3;
+        
+        const newFocus = Math.max(10, Math.min(100, 
+          prevFocus + change + microVariation
+        ));
+        
+        const roundedFocus = Math.round(newFocus);
+        
+        // Update focus data
+        setFocusData(prev => {
+          const updated = [...prev, roundedFocus];
+          // Keep last 60 data points (1 per second for 1 minute view)
+          return updated.slice(-60);
+        });
+        
+        return roundedFocus;
       });
     }, 1000);
   };
@@ -263,7 +270,7 @@ export default function FocusScreen() {
           data={{
             labels: [],
             datasets: [{
-              data: focusData.length > 0 ? focusData : [0],
+              data: focusData.length > 1 ? focusData : [50, 50],
             }],
           }}
           width={SCREEN_WIDTH - 40}
@@ -304,7 +311,7 @@ export default function FocusScreen() {
           style={styles.stopButton}
           onPress={stopSession}
         >
-          <Square size={24} color="#fff" />
+          <Square size={24} color="#fff" fill="#fff" />
           <Text style={styles.stopButtonText}>End Session</Text>
         </TouchableOpacity>
       </View>
@@ -379,7 +386,7 @@ export default function FocusScreen() {
           style={styles.startButton}
           onPress={startSession}
         >
-          <Play size={28} color="#fff" />
+          <Play size={28} color="#fff" fill="#fff" />
           <Text style={styles.startButtonText}>Start Focus Session</Text>
         </TouchableOpacity>
         
@@ -628,7 +635,6 @@ const styles = StyleSheet.create({
     fontSize: 48,
     fontWeight: 'bold',
     color: '#8b5cf6',
-    fontVariant: ['tabular-nums'],
   },
   
   // Overlay Toggle
