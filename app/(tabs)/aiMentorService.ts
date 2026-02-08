@@ -12,6 +12,7 @@
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { ensureAuth } from './podService';
+import { TASK_MANAGEMENT_TOOLS, executeTaskTool } from './taskTools';
 
 // ============================================================================
 // CONFIGURATION
@@ -163,7 +164,42 @@ For motivation/productivity:
 - Offer accountability and structure
 - Suggest realistic approaches
 
-Remember: You're not a therapist, but a supportive mentor who genuinely cares. Be real, be kind, be helpful.`;
+TASK MANAGEMENT CAPABILITIES:
+You can help users manage their tasks! You have access to these functions:
+- add_task: Create new tasks
+- delete_task: Remove tasks
+- list_tasks: View all tasks
+- complete_task: Mark tasks as done/undone
+
+When adding tasks, you MUST collect these REQUIRED fields:
+1. name (task title)
+2. priority (high/medium/low)
+3. energy (high/medium/low - energy level needed)
+4. time (estimated minutes)
+5. type (category like "Deep focus", "Admin", "Creative", "Meeting")
+
+OPTIONAL field:
+- dueDate (only ask if user mentions it or if it seems important)
+
+**IMPORTANT**: If the user asks to add a task but doesn't provide all REQUIRED fields, ask conversational questions to get the missing info. For example:
+- "What priority would you give this task - high, medium, or low?"
+- "How much energy will this take - high, medium, or low?"
+- "About how long do you think this will take?"
+- "What type of task is this? Like deep focus, admin, creative, or something else?"
+
+Be natural and friendly when asking - don't list all questions at once. Ask one at a time in a conversational flow.
+
+When users say things like "add a task to write a report" or "remind me to call mom", recognize this as a task request and collect the needed information.
+
+Examples of task-related requests:
+- "Add a task to finish the presentation"
+- "I need to remember to call the doctor"
+- "Can you add 'review contract' to my list?"
+- "Delete the email task"
+- "Mark 'finish report' as done"
+- "What tasks do I have?"
+
+Remember: You're not a therapist, but a supportive mentor who genuinely cares AND helps manage tasks. Be real, be kind, be helpful.`;
 };
 
 // Generate welcome message based on user profile
@@ -204,7 +240,7 @@ export const sendMessageToMentor = async (userMessage: string, conversationHisto
       },
       {
         role: 'model',
-        parts: [{ text: 'I understand. I\'m here to support you with warmth, empathy, and practical guidance. How can I help you today?' }],
+        parts: [{ text: 'I understand. I\'m here to support you with warmth, empathy, and practical guidance. I can also help you manage your tasks! How can I help you today?' }],
       },
       ...recentHistory.map((msg: any) => ({
         role: msg.role === 'model' ? 'model' : 'user',
@@ -216,7 +252,7 @@ export const sendMessageToMentor = async (userMessage: string, conversationHisto
       },
     ];
 
-    // Call Gemini API
+    // Call Gemini API with function calling (tools)
     const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=' + GEMINI_API_KEY, {
       method: 'POST',
       headers: {
@@ -224,8 +260,11 @@ export const sendMessageToMentor = async (userMessage: string, conversationHisto
       },
       body: JSON.stringify({
         contents,
+        tools: [{
+          function_declarations: TASK_MANAGEMENT_TOOLS,
+        }],
         generationConfig: {
-          temperature: 0.9, // More creative and conversational
+          temperature: 0.9,
           topK: 40,
           topP: 0.95,
           maxOutputTokens: 1000,
@@ -259,9 +298,67 @@ export const sendMessageToMentor = async (userMessage: string, conversationHisto
 
     const data = await response.json();
     
-    // Extract the text from the response
+    // Check if Gemini wants to call a function
     if (data.candidates && data.candidates[0] && data.candidates[0].content) {
-      const text = data.candidates[0].content.parts[0].text;
+      const content = data.candidates[0].content;
+      
+      // Check for function calls
+      const functionCall = content.parts?.find((part: any) => part.functionCall);
+      
+      if (functionCall) {
+        // Execute the function
+        const toolName = functionCall.functionCall.name;
+        const toolArgs = functionCall.functionCall.args;
+        
+        console.log('🔧 Gemini calling tool:', toolName, toolArgs);
+        
+        const toolResult = await executeTaskTool(toolName, toolArgs);
+        
+        // Send the result back to Gemini for a natural response
+        const followUpResponse = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=' + GEMINI_API_KEY, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            contents: [
+              ...contents,
+              {
+                role: 'model',
+                parts: [{ functionCall: functionCall.functionCall }],
+              },
+              {
+                role: 'user',
+                parts: [{ 
+                  functionResponse: {
+                    name: toolName,
+                    response: { result: toolResult },
+                  }
+                }],
+              },
+            ],
+            generationConfig: {
+              temperature: 0.9,
+              topK: 40,
+              topP: 0.95,
+              maxOutputTokens: 1000,
+            },
+          }),
+        });
+        
+        if (!followUpResponse.ok) {
+          // If follow-up fails, return the tool result directly
+          return toolResult;
+        }
+        
+        const followUpData = await followUpResponse.json();
+        const finalText = followUpData.candidates?.[0]?.content?.parts?.[0]?.text;
+        
+        return finalText || toolResult;
+      }
+      
+      // Regular text response
+      const text = content.parts[0].text;
       return text;
     }
     
