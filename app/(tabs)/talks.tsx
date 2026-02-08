@@ -51,12 +51,26 @@ const getUserColor = (userId: string): string => {
 export default function TalksScreen() {
   const [activeTab, setActiveTab] = useState<TalksTab>('ai');
   
+<<<<<<< HEAD
   // Community Pods state
   const [currentPod, setCurrentPod] = useState<Pod | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [messageText, setMessageText] = useState('');
   const [loading, setLoading] = useState(true);
   const [currentUserId, setCurrentUserId] = useState<string>('');
+=======
+  // ====== AI MENTOR STATE ======
+  const [aiMessages, setAiMessages] = useState([]);
+  const [aiInputText, setAiInputText] = useState('');
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiLoadingHistory, setAiLoadingHistory] = useState(true);
+  const [userProfile, setUserProfile] = useState({ tags: [], name: null, goals: [] });
+  const [voiceEnabled, setVoiceEnabled] = useState(false);
+  const [generatingVoice, setGeneratingVoice] = useState(false);
+  const [showQuickPrompts, setShowQuickPrompts] = useState(true); // NEW: Toggle quick prompts
+  const aiScrollViewRef = useRef(null);
+  // const soundRef = useRef(null); // Uncomment if using expo-av
+>>>>>>> 340904e705cd98adc3023ec7ddaa9f0a2c981d4d
   
   // Join flow state
   const [struggle, setStruggle] = useState('');
@@ -174,6 +188,275 @@ export default function TalksScreen() {
     }
   }, [currentPod]);
 
+<<<<<<< HEAD
+=======
+  // Cleanup audio on unmount
+  useEffect(() => {
+    return () => {
+      // if (soundRef.current) {
+      //   soundRef.current.unloadAsync();
+      // }
+    };
+  }, []);
+
+  // ============================================================================
+  // AI MENTOR FUNCTIONS
+  // ============================================================================
+
+  const initializeAIMentor = async () => {
+    try {
+      setAiLoadingHistory(true);
+      
+      // Load user profile
+      const profile = await getUserProfile();
+      setUserProfile(profile);
+
+      // Load conversation history
+      const history = await loadConversationHistory();
+      setAiMessages(history);
+
+      // If no history, send welcome message
+      if (history.length === 0) {
+        const welcomeMessage = generateWelcomeMessage(profile);
+        const welcomeMsg = {
+          role: 'model',
+          text: welcomeMessage,
+          timestamp: new Date(),
+        };
+        setAiMessages([welcomeMsg]);
+        await saveMessage('model', welcomeMessage);
+      }
+    } catch (error) {
+      console.error('Error initializing AI mentor:', error);
+      Alert.alert('Error', 'Failed to load AI mentor');
+    } finally {
+      setAiLoadingHistory(false);
+    }
+  };
+
+  const handleSendAIMessage = async (customText = null) => {
+    console.log('=== SEND MESSAGE DEBUG START ===');
+    const messageText = customText || aiInputText.trim();
+    console.log('1. Message text:', messageText);
+    console.log('2. AI loading?', aiLoading);
+    
+    if (!messageText || aiLoading) {
+      console.log('3. BLOCKED: Empty message or already loading');
+      console.log('=== SEND MESSAGE DEBUG END ===');
+      return;
+    }
+
+    console.log('4. Clearing input and dismissing keyboard');
+    setAiInputText('');
+    Keyboard.dismiss();
+
+    // Add user message to UI immediately
+    const userMsg = {
+      role: 'user',
+      text: messageText,
+      timestamp: new Date(),
+    };
+    
+    console.log('5. Adding user message to UI');
+    // Update messages with user message
+    setAiMessages(prev => {
+      console.log('6. Current messages count:', prev.length);
+      const newMessages = [...prev, userMsg];
+      console.log('7. New messages count:', newMessages.length);
+      return newMessages;
+    });
+
+    // Save user message to Firestore
+    console.log('8. Saving user message to Firestore...');
+    try {
+      await saveMessage('user', messageText);
+      console.log('9. User message saved successfully');
+    } catch (error) {
+      console.error('10. ERROR saving user message:', error);
+    }
+
+    // Set loading state BEFORE making API call
+    console.log('11. Setting loading state to TRUE');
+    setAiLoading(true);
+    
+    // Scroll to show loading indicator
+    setTimeout(() => {
+      aiScrollViewRef.current?.scrollToEnd({ animated: true });
+    }, 100);
+
+    try {
+      // Get AI response with current messages including the user message
+      const currentMessages = [...aiMessages, userMsg];
+      console.log('12. Current messages for API call:', currentMessages.length);
+      console.log('13. User profile:', userProfile);
+      console.log('14. Calling sendMessageToMentor...');
+      
+      const response = await sendMessageToMentor(messageText, currentMessages, userProfile);
+      
+      console.log('15. Got response from API');
+      console.log('16. Response preview:', response.substring(0, 100));
+
+      // Add AI response to UI
+      const aiMsg = {
+        role: 'model',
+        text: response,
+        timestamp: new Date(),
+      };
+      
+      console.log('17. Adding AI response to UI');
+      setAiMessages(prev => [...prev, aiMsg]);
+
+      // Save AI message to Firestore
+      console.log('18. Saving AI message to Firestore...');
+      await saveMessage('model', response);
+      console.log('19. AI message saved successfully');
+
+      // Generate voice if enabled (optional)
+      if (voiceEnabled) {
+        console.log('20. Generating voice...');
+        generateVoiceForMessage(response);
+      }
+
+      // Auto-scroll to bottom
+      setTimeout(() => {
+        aiScrollViewRef.current?.scrollToEnd({ animated: true });
+      }, 100);
+      
+      console.log('21. SUCCESS - Message exchange complete');
+      console.log('=== SEND MESSAGE DEBUG END ===');
+    } catch (error) {
+      console.error('=== SEND MESSAGE ERROR ===');
+      console.error('Error:', error);
+      console.error('Error message:', error.message);
+      console.error('Error stack:', error.stack);
+      console.error('=========================');
+      
+      // Show user-friendly error message
+      const errorMessage = error.message || 'Failed to get response. Please try again.';
+      Alert.alert('Error', errorMessage);
+      
+      // Optionally remove the user message if API call failed
+      // setAiMessages(prev => prev.slice(0, -1));
+    } finally {
+      console.log('22. Setting loading state to FALSE');
+      setAiLoading(false);
+    }
+  };
+
+  const generateVoiceForMessage = async (text) => {
+    setGeneratingVoice(true);
+    try {
+      const audioBase64 = await textToSpeech(text, VOICE_OPTIONS.sarah.id);
+      
+      if (audioBase64) {
+        // Play the audio (requires expo-av)
+        // await playAudio(audioBase64);
+        console.log('Voice generated successfully');
+      }
+    } catch (error) {
+      console.error('Error generating voice:', error);
+    } finally {
+      setGeneratingVoice(false);
+    }
+  };
+
+  // Uncomment if using expo-av for voice playback
+  /*
+  const playAudio = async (audioBase64) => {
+    try {
+      if (soundRef.current) {
+        await soundRef.current.unloadAsync();
+      }
+
+      await Audio.setAudioModeAsync({
+        playsInSilentModeIOS: true,
+        staysActiveInBackground: false,
+        shouldDuckAndroid: true,
+      });
+
+      const { sound } = await Audio.Sound.createAsync(
+        { uri: audioBase64 },
+        { shouldPlay: true }
+      );
+
+      soundRef.current = sound;
+    } catch (error) {
+      console.error('Error playing audio:', error);
+    }
+  };
+  */
+
+  const handleClearAIHistory = () => {
+    console.log('=== CLEAR HISTORY BUTTON CLICKED ===');
+    Alert.alert(
+      'Clear Conversation?',
+      'This will delete your entire conversation history. This cannot be undone.',
+      [
+        { 
+          text: 'Cancel', 
+          style: 'cancel',
+          onPress: () => console.log('❌ User cancelled deletion')
+        },
+        {
+          text: 'Clear',
+          style: 'destructive',
+          onPress: async () => {
+            console.log('✅ User confirmed deletion - starting process...');
+            try {
+              // Step 1: Clear from Firestore
+              console.log('STEP 1: Calling clearConversationHistory...');
+              await clearConversationHistory();
+              console.log('STEP 1 COMPLETE: Firestore messages deleted');
+              
+              // Step 2: Clear from UI state
+              console.log('STEP 2: Clearing messages from UI state...');
+              setAiMessages([]);
+              console.log('STEP 2 COMPLETE: UI state cleared');
+              
+              // Step 3: Create and add welcome message
+              console.log('STEP 3: Creating welcome message...');
+              const welcomeMessage = generateWelcomeMessage(userProfile);
+              console.log('STEP 3a: Welcome message text:', welcomeMessage.substring(0, 50) + '...');
+              
+              const welcomeMsg = {
+                role: 'model',
+                text: welcomeMessage,
+                timestamp: new Date(),
+              };
+              
+              console.log('STEP 3b: Adding welcome message to UI...');
+              setAiMessages([welcomeMsg]);
+              console.log('STEP 3c: UI updated with welcome message');
+              
+              // Step 4: Save welcome message to Firestore
+              console.log('STEP 4: Saving welcome message to Firestore...');
+              await saveMessage('model', welcomeMessage);
+              console.log('STEP 4 COMPLETE: Welcome message saved');
+              
+              // Step 5: Show success alert
+              console.log('STEP 5: Showing success alert');
+              Alert.alert('Cleared', 'Conversation history cleared successfully');
+              console.log('=== CLEAR HISTORY SUCCESS - ALL STEPS COMPLETE ===');
+            } catch (error) {
+              console.error('=== CLEAR HISTORY FAILED ===');
+              console.error('Error during clear history:', error);
+              console.error('Error name:', error.name);
+              console.error('Error message:', error.message);
+              console.error('Error stack:', error.stack);
+              console.error('========================');
+              Alert.alert('Error', 'Failed to clear history: ' + error.message);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  // ============================================================================
+  // COMMUNITY POD FUNCTIONS
+  // ============================================================================
+
+>>>>>>> 340904e705cd98adc3023ec7ddaa9f0a2c981d4d
   const loadUserPod = async () => {
     setLoading(true);
     try {
@@ -270,7 +553,63 @@ export default function TalksScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       >
+<<<<<<< HEAD
         <ScrollView 
+=======
+        {/* AI Chat Header */}
+        <View style={styles.aiHeader}>
+          <View style={styles.headerLeft}>
+            <Text style={styles.aiHeaderTitle}>AI Mentor</Text>
+            <Text style={styles.aiHeaderSubtitle}>Your personal support companion</Text>
+          </View>
+          <View style={styles.headerActions}>
+            <TouchableOpacity
+              style={[styles.iconButton, showQuickPrompts && styles.iconButtonActive]}
+              onPress={() => setShowQuickPrompts(!showQuickPrompts)}
+            >
+              <MessageCircle size={20} color={showQuickPrompts ? "#8b5cf6" : "#666"} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.iconButton, voiceEnabled && styles.iconButtonActive]}
+              onPress={() => setVoiceEnabled(!voiceEnabled)}
+            >
+              {voiceEnabled ? (
+                <Volume2 size={20} color="#8b5cf6" />
+              ) : (
+                <VolumeX size={20} color="#666" />
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.iconButton} onPress={handleClearAIHistory}>
+              <Trash2 size={20} color="#ef4444" />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Quick Prompts - Collapsible */}
+        {showQuickPrompts && (
+          <ScrollView 
+            horizontal 
+            style={styles.quickPromptsContainer}
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.quickPromptsContent}
+          >
+            {QUICK_PROMPTS.map((prompt, index) => (
+              <TouchableOpacity
+                key={index}
+                style={styles.quickPrompt}
+                onPress={() => handleSendAIMessage(prompt.text)}
+              >
+                <Text style={styles.quickPromptIcon}>{prompt.icon}</Text>
+                <Text style={styles.quickPromptText}>{prompt.text}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        )}
+
+        {/* Messages */}
+        <ScrollView
+          ref={aiScrollViewRef}
+>>>>>>> 340904e705cd98adc3023ec7ddaa9f0a2c981d4d
           style={styles.messagesContainer}
           contentContainerStyle={styles.messagesContent}
         >
@@ -296,9 +635,28 @@ export default function TalksScreen() {
             </View>
           ))}
           {aiLoading && (
+<<<<<<< HEAD
             <View style={[styles.aiMessageItem, styles.aiModelMessage]}>
               <ActivityIndicator size="small" color="#8b5cf6" />
               <Text style={styles.loadingText}>Thinking...</Text>
+=======
+            <View style={styles.aiMessageWrapper}>
+              <View style={[styles.messageBubble, styles.aiMessage, styles.loadingBubble]}>
+                <View style={styles.loadingContainer}>
+                  <ActivityIndicator size="small" color="#8b5cf6" style={styles.loadingSpinner} />
+                  <Text style={[styles.messageText, styles.aiMessageText, styles.typingText]}>
+                    Thinking...
+                  </Text>
+                </View>
+              </View>
+            </View>
+          )}
+
+          {generatingVoice && (
+            <View style={styles.voiceIndicator}>
+              <Volume2 size={16} color="#8b5cf6" />
+              <Text style={styles.voiceIndicatorText}>Generating voice...</Text>
+>>>>>>> 340904e705cd98adc3023ec7ddaa9f0a2c981d4d
             </View>
           )}
         </ScrollView>
@@ -685,6 +1043,45 @@ const styles = StyleSheet.create({
     color: '#999',
     marginTop: 4,
   },
+<<<<<<< HEAD
+=======
+  userMessageTime: {
+    color: '#fff',
+    opacity: 0.8,
+  },
+  loadingBubble: {
+    backgroundColor: '#f8f4ff',
+    borderColor: '#e9d5ff',
+    borderWidth: 1,
+  },
+  loadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  loadingSpinner: {
+    marginRight: 4,
+  },
+  typingText: {
+    fontStyle: 'italic',
+    opacity: 0.7,
+    color: '#8b5cf6',
+  },
+  voiceIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 8,
+    alignSelf: 'flex-start',
+  },
+  voiceIndicatorText: {
+    fontSize: 13,
+    color: '#8b5cf6',
+    fontStyle: 'italic',
+  },
+
+  // Input
+>>>>>>> 340904e705cd98adc3023ec7ddaa9f0a2c981d4d
   inputContainer: {
     flexDirection: 'row',
     padding: 12,
