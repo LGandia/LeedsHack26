@@ -1,9 +1,10 @@
-import { LogOut, MessageCircle, Send } from 'lucide-react-native';
-import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { LogOut, MessageCircle, Send, Volume2, VolumeX } from 'lucide-react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { generateWelcomeMessage, getUserProfile, loadConversationHistory, saveMessage, sendMessageToMentor } from './aiMentorService';
 import { ensureAuth, findOrCreatePod, getUserPod, isPodExpired, leavePod, sendMessage, subscribeToPodMessages } from './podService';
+import { playAudio, textToSpeech } from './ttsService';
 
 type TalksTab = 'ai' | 'community';
 
@@ -33,19 +34,31 @@ interface AIChatMessage {
   timestamp: any;
 }
 
-// ADHD-friendly soft colors for user messages
+// ADHD-friendly soft colors for user messages - expanded palette
 const USER_COLORS = [
   '#E8F5E9', // Soft mint green
-  '#E3F2FD', // Soft sky blue
+  '#E3F2FD', // Soft sky blue  
   '#FFF9C4', // Soft warm yellow
   '#F3E5F5', // Soft lavender
   '#FFE0B2', // Soft peach
+  '#F0F4C3', // Soft lime
+  '#FCE4EC', // Soft pink
+  '#E0F2F1', // Soft teal
+  '#FFF3E0', // Soft amber
+  '#E1BEE7', // Soft purple
 ];
 
-// Assign color based on userId
+// Assign color based on userId - uses different hash algorithm for better distribution
 const getUserColor = (userId: string): string => {
-  const hash = userId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-  return USER_COLORS[hash % USER_COLORS.length];
+  // Create a more unique hash that distributes colors better
+  let hash = 0;
+  for (let i = 0; i < userId.length; i++) {
+    hash = ((hash << 5) - hash) + userId.charCodeAt(i);
+    hash = hash & hash; // Convert to 32bit integer
+  }
+  // Use absolute value to ensure positive index
+  const index = Math.abs(hash) % USER_COLORS.length;
+  return USER_COLORS[index];
 };
 
 export default function TalksScreen() {
@@ -63,6 +76,7 @@ export default function TalksScreen() {
   const [supportStyle, setSupportStyle] = useState('');
   const [duration, setDuration] = useState('');
   const [joining, setJoining] = useState(false);
+  const [leaving, setLeaving] = useState(false);
 
   // AI Chat state
   const [aiMessages, setAiMessages] = useState<AIChatMessage[]>([]);
@@ -70,6 +84,7 @@ export default function TalksScreen() {
   const [aiLoading, setAiLoading] = useState(false);
   const [aiInitializing, setAiInitializing] = useState(true);
   const [userProfile, setUserProfile] = useState<any>(null);
+  const [ttsEnabled, setTtsEnabled] = useState(false);
 
   // Initialize AI Chat
   useEffect(() => {
@@ -141,6 +156,19 @@ export default function TalksScreen() {
 
       // Save AI response
       await saveMessage('model', aiResponse);
+
+      // Text-to-speech if enabled
+      if (ttsEnabled) {
+        try {
+          const audio = await textToSpeech(aiResponse);
+          if (audio) {
+            await playAudio(audio);
+          }
+        } catch (error) {
+          console.log('TTS not available:', error);
+          // Silently fail - TTS is optional
+        }
+      }
     } catch (error: any) {
       console.error('Error sending AI message:', error);
       Alert.alert('Error', error.message || 'Failed to send message. Please try again.');
@@ -150,14 +178,31 @@ export default function TalksScreen() {
   };
 
   // Community Pods functions (existing code)
+  const loadUserPod = useCallback(async () => {
+    setLoading(true);
+    try {
+      // Ensure currentUserId is set BEFORE loading pod
+      if (!currentUserId) {
+        const userId = await ensureAuth();
+        setCurrentUserId(userId);
+      }
+      
+      const pod = await getUserPod();
+      setCurrentPod(pod as Pod | null);
+    } catch (error) {
+      console.error('Error loading pod:', error);
+    }
+    setLoading(false);
+  }, [currentUserId]);
+
   useEffect(() => {
     if (activeTab === 'community') {
       loadUserPod();
     }
-  }, [activeTab]);
+  }, [activeTab, loadUserPod]);
 
   useEffect(() => {
-    // Get and store current user ID
+    // Get and store current user ID - CRITICAL for message alignment
     const getCurrentUserId = async () => {
       const userId = await ensureAuth();
       setCurrentUserId(userId);
@@ -167,23 +212,23 @@ export default function TalksScreen() {
 
   useEffect(() => {
     if (currentPod) {
+      // Clear old messages first
+      setMessages([]);
+      
       const unsubscribe = subscribeToPodMessages(currentPod.id, (msgs: Message[]) => {
         setMessages(msgs);
       });
-      return () => unsubscribe();
+      
+      return () => {
+        unsubscribe();
+        // Clear messages when unsubscribing
+        setMessages([]);
+      };
+    } else {
+      // No pod - clear messages
+      setMessages([]);
     }
-  }, [currentPod]);
-
-  const loadUserPod = async () => {
-    setLoading(true);
-    try {
-      const pod = await getUserPod();
-      setCurrentPod(pod as Pod | null);
-    } catch (error) {
-      console.error('Error loading pod:', error);
-    }
-    setLoading(false);
-  };
+  }, [currentPod, currentUserId]);
 
   const handleJoinPod = async () => {
     if (!struggle || !supportStyle || !duration) {
@@ -193,8 +238,20 @@ export default function TalksScreen() {
 
     setJoining(true);
     try {
+      // Ensure currentUserId is set BEFORE joining
+      if (!currentUserId) {
+        const userId = await ensureAuth();
+        setCurrentUserId(userId);
+      }
+      
       const podId = await findOrCreatePod(struggle, supportStyle, duration);
       await loadUserPod();
+      
+      // Reset join form
+      setStruggle('');
+      setSupportStyle('');
+      setDuration('');
+      
       Alert.alert('Welcome! 🎉', 'You\'ve joined a pod. Be kind and supportive.');
     } catch (error) {
       console.error('Error joining pod:', error);
@@ -218,23 +275,36 @@ export default function TalksScreen() {
   };
 
   const handleLeavePod = () => {
-    if (!currentPod) return;
+    if (!currentPod || leaving) return;
     
     Alert.alert(
       'Leave Pod?',
-      'Are you sure you want to leave this pod?',
+      'Are you sure you want to leave this pod? Your chat history will be cleared.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Leave',
           style: 'destructive',
           onPress: async () => {
+            if (leaving) return; // Prevent double-clicking
+            
+            setLeaving(true);
             try {
-              await leavePod(currentPod.id);
+              const podToLeave = currentPod.id;
+              
+              // Clear UI immediately
               setCurrentPod(null);
               setMessages([]);
+              
+              // Then update Firestore
+              await leavePod(podToLeave);
+              
+              Alert.alert('Left Pod', 'Chat history has been cleared. You can join a new pod.');
             } catch (error) {
               console.error('Error leaving pod:', error);
+              Alert.alert('Error', 'Could not leave pod. Please try again.');
+            } finally {
+              setLeaving(false);
             }
           },
         },
@@ -270,6 +340,22 @@ export default function TalksScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       >
+        {/* TTS Toggle Header */}
+        <View style={styles.ttsHeader}>
+          {ttsEnabled ? (
+            <Volume2 size={18} color="#8b5cf6" />
+          ) : (
+            <VolumeX size={18} color="#999" />
+          )}
+          <Text style={styles.ttsLabel}>Voice Responses</Text>
+          <Switch
+            value={ttsEnabled}
+            onValueChange={setTtsEnabled}
+            trackColor={{ false: '#d1d5db', true: '#c4b5fd' }}
+            thumbColor={ttsEnabled ? '#8b5cf6' : '#f4f3f4'}
+          />
+        </View>
+
         <ScrollView 
           style={styles.messagesContainer}
           contentContainerStyle={styles.messagesContent}
@@ -447,19 +533,29 @@ export default function TalksScreen() {
                 key={msg.id}
                 style={[
                   styles.messageItem,
+                  // System messages - center
                   msg.type === 'system' && styles.systemMessage,
-                  msg.type === 'user' && (isOwnMessage ? styles.ownMessage : styles.otherMessage),
-                  msg.type === 'user' && msg.userId && { backgroundColor: getUserColor(msg.userId) }
+                  // User messages - check if own
+                  msg.type === 'user' && {
+                    alignSelf: isOwnMessage ? 'flex-end' : 'flex-start',
+                    backgroundColor: isOwnMessage ? '#8b5cf6' : getUserColor(msg.userId || ''),
+                  }
                 ]}
               >
                 <Text style={[
                   styles.messageText,
-                  msg.type === 'system' && styles.systemMessageText
+                  msg.type === 'system' && styles.systemMessageText,
+                  // White text for own messages (purple background)
+                  msg.type === 'user' && isOwnMessage && { color: '#fff' }
                 ]}>
                   {msg.text}
                 </Text>
                 {msg.type === 'user' && msg.createdAt && (
-                  <Text style={styles.messageTime}>
+                  <Text style={[
+                    styles.messageTime,
+                    // Lighter timestamp color for own messages
+                    isOwnMessage && { color: '#e9d5ff' }
+                  ]}>
                     {formatTimestamp(msg.createdAt)}
                   </Text>
                 )}
@@ -474,7 +570,15 @@ export default function TalksScreen() {
             <Text style={styles.expiredText}>This pod has ended 💙</Text>
             <TouchableOpacity
               style={styles.newPodButton}
-              onPress={() => {
+              onPress={async () => {
+                // Leave the expired pod and clear state
+                try {
+                  if (currentPod) {
+                    await leavePod(currentPod.id);
+                  }
+                } catch (error) {
+                  console.log('Error leaving expired pod:', error);
+                }
                 setCurrentPod(null);
                 setMessages([]);
               }}
@@ -628,6 +732,22 @@ const styles = StyleSheet.create({
   chatContainer: {
     flex: 1,
   },
+  ttsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#f8f4ff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e9d5ff',
+    gap: 8,
+  },
+  ttsLabel: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#666',
+  },
   messagesContainer: {
     flex: 1,
     backgroundColor: '#fff',
@@ -661,6 +781,7 @@ const styles = StyleSheet.create({
   },
   ownMessage: {
     alignSelf: 'flex-end',
+    backgroundColor: '#8b5cf6', // Purple for own messages
   },
   otherMessage: {
     alignSelf: 'flex-start',
